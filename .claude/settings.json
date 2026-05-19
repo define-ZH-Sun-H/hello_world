@@ -1,12 +1,12 @@
 {
   "permissions": {
     "allow": [
-      "Bash(tasklist)",
-      "Bash(dir /s /b \"C:\\\\Users\\\\15756\\\\AppData\\\\Local\\\\Temp\")",
-      "Bash(findstr -i \"wsl\")",
-      "Bash(dir \"C:\\\\Users\\\\15756\\\\AppData\\\\Local\\\\Temp\" /a)",
-      "Bash(powershell -ExecutionPolicy Bypass -Command \"Get-AppxPackage -Name '*WSL*' | Format-List Name,Version,Status,PackageFullName\")",
-      "Bash(cmd.exe /c \"dir /s /b C:\\\\ProgramData\\\\Microsoft\\\\Windows\\\\AppRepository 2>nul | findstr /i wsl\")"
-    ]
+      "Bash",
+      "Read",
+      "Write",
+      "Edit",
+      "Agent"
+    ],
+    "defaultMode": "dontAsk"
   }
 }

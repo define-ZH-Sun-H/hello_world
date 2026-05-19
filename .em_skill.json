@@ -1,0 +1,26 @@
+{
+  "tools": {
+    "cmake": {
+      "path": "C:\\Espressif\\tools\\cmake\\3.30.2\\bin\\cmake.exe"
+    },
+    "ninja": {
+      "path": "C:\\Espressif\\tools\\ninja\\1.12.1\\ninja.exe"
+    },
+    "idf-py": {
+      "path": "C:\\Espressif\\tools\\python\\v5.5.1\\venv\\Scripts\\python.exe D:\\Espressif\\v5.5.1\\esp-idf\\tools\\idf.py"
+    },
+    "idf-python": {
+      "path": "C:\\Espressif\\tools\\python\\v5.5.1\\venv\\Scripts\\python.exe"
+    },
+    "idf-path": {
+      "path": "D:\\Espressif\\v5.5.1\\esp-idf"
+    }
+  },
+  "chips": {
+    "current": "esp32s3"
+  },
+  "project": {
+    "name": "hello_world",
+    "type": "esp-idf"
+  }
+}
