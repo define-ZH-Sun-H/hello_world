@@ -1,10 +1,19 @@
 set(src_dirs
             iic
-            oled)
+            key
+            led
+            oled
+            rgb
+            sensor)
 
 set(include_dirs
+            .
             iic
-            oled)
+            key
+            led
+            oled
+            rgb
+            sensor)
 
 set(requires
             driver)

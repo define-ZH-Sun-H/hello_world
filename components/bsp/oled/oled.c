@@ -162,22 +162,26 @@ void oled_off(void)
 }
 
 /**
+ * @brief       只清显存缓冲，不刷新屏幕（配合 oled_refresh_gram 使用，避免刷屏闪烁）
+ * @param       无
+ * @retval      无
+ */
+void oled_clear_gram(void)
+{
+    uint8_t i, n;
+    for (i = 0; i < 8; i++)
+        for (n = 0; n < 128; n++)
+            OLED_GRAM[n][i] = 0X00;
+}
+
+/**
  * @brief       清屏
  * @param       无
  * @retval      无
  */
 void oled_clear(void)
 {
-    uint8_t i,n;
-
-    for (i = 0;i < 8;i++)
-    {
-        for (n = 0;n < 128;n++)
-        {
-            OLED_GRAM[n][i] = 0X00;
-        }
-    }
-
+    oled_clear_gram();
     oled_refresh_gram();    /* 更新显示 */
 }
 
@@ -369,5 +373,27 @@ void oled_show_string(uint8_t x, uint8_t y, const char *p, uint8_t size)
         oled_show_char(x, y, *p, size, 1);  /* 显示一个字符 */
         x += size / 2;                      /* ASCII字符宽度为汉字宽度的一半 */
         p++;
+    }
+}
+
+/**
+ * @brief       绘制位图（row-major，逐行：MSB=左，每字节8像素，不足补齐）
+ * @param       x,y : 左上角坐标
+ * @param       w,h : 宽高（像素）
+ * @param       data: 位图数据，每行 (w+7)/8 字节
+ * @retval      无
+ */
+void oled_draw_bitmap(uint8_t x, uint8_t y, uint8_t w, uint8_t h, const uint8_t *data)
+{
+    uint8_t row, col;
+    uint8_t bytes_per_row = (w + 7) / 8;
+
+    for (row = 0; row < h; row++) {
+        for (col = 0; col < w; col++) {
+            uint8_t byte_idx = row * bytes_per_row + col / 8;
+            uint8_t bit = col % 8;
+            oled_draw_point(x + col, y + row,
+                            (data[byte_idx] >> (7 - bit)) & 0x01);
+        }
     }
 }
