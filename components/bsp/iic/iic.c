@@ -19,6 +19,7 @@
  */
 
 #include "iic.h"
+#include "debug.h"
 
 
 i2c_obj_t iic_master[I2C_NUM_MAX];  /* 为IIC0和IIC1分别定义IIC控制块结构体 */
@@ -75,7 +76,7 @@ i2c_obj_t iic_init(uint8_t iic_port)
     {
         while(1)
         {
-            printf("%s , ret: %d", __func__, iic_master[i].init_flag);
+            DBG_ERR("%s , ret: %d", __func__, iic_master[i].init_flag);
             vTaskDelay(1000);
         }
     }

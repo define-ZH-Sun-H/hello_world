@@ -9,10 +9,12 @@
 #include "sdkconfig.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/event_groups.h"
 #include "esp_chip_info.h"
 #include "esp_flash.h"
 #include "esp_system.h"
 #include "esp_task_wdt.h"
+#include "esp_spiffs.h"
 #include "bsp.h"
 #include "rgb.h"
 
@@ -41,56 +43,84 @@ void wdt_initial(void)
     esp_task_wdt_init(&twdt_config);
 }
 
+/**
+ * @brief 统一创建所有 FreeRTOS 任务
+ *
+ * 所有 xTaskCreatePinnedToCore 集中于此，方便查看栈/优先级/核绑定。
+ * 必须在所有硬件初始化完成后调用。
+ */
+static void create_all_tasks(void)
+{
+    /* 按键扫描（10ms 周期，core 0，优先级 6） */
+    xTaskCreatePinnedToCore(key_task, "keytask", 2048, NULL, 9, NULL, 0);
+
+    /* 传感器采集（100ms 周期，core 0，优先级 4） */
+    xTaskCreatePinnedToCore(sensor_task, "sensor_task", 2560, NULL, 10, NULL, 0);
+
+    /* OLED 显示（50Hz 刷新，core 1，优先级 5） */
+    xTaskCreatePinnedToCore(display_task, "oled_disp", 3072, NULL, 8, NULL, 1);
+
+    // xTaskCreatePinnedToCore(led_task, "ledtask", 2048, NULL, 4, NULL, 1);
+    // xTaskCreatePinnedToCore(rgb_task, "rgbtask", 2048, NULL, 3, NULL, 1);
+}
+
 
 void app_main(void)
 {
     esp_chip_info_t chip_info;
     esp_chip_info(&chip_info);
-    printf("This is %s chip with %d CPU core(s), %s%s%s%s, ",
+    DBG_INFO("This is %s chip with %d CPU core(s), %s%s%s%s, ",
            CONFIG_IDF_TARGET,
            chip_info.cores,
            (chip_info.features & CHIP_FEATURE_WIFI_BGN) ? "WiFi/" : "",
            (chip_info.features & CHIP_FEATURE_BT) ? "BT" : "",
            (chip_info.features & CHIP_FEATURE_BLE) ? "BLE" : "",
            (chip_info.features & CHIP_FEATURE_IEEE802154) ? ", 802.15.4 (Zigbee/Thread)" : "");
-
-    gpio_install_isr_service(0);// 参数 0 = ESP_INTR_FLAG_DEFAULT
-
-    led_init();
-    key_init();
-
-    /* 初始化 OLED 并启动 50Hz 显示任务 */
+        /* ================================================================
+     * SPIFFS 挂载 — 配置文件存储
+     * ================================================================ */
     {
-        i2c_obj_t oled_dev = iic_init(I2C_NUM_1);
-        oled_init(oled_dev);
+        esp_vfs_spiffs_conf_t conf = {
+            .base_path = "/spiffs",
+            .partition_label = "storage",
+            .max_files = 5,
+            .format_if_mount_failed = true,
+        };
+        esp_err_t ret = esp_vfs_spiffs_register(&conf);
+        if (ret == ESP_OK) {
+            size_t total = 0, used = 0;
+            esp_spiffs_info("storage", &total, &used);
+            DBG_INFO("SPIFFS 挂载成功: %s 分区, 总 %d KB, 已用 %d KB\n",
+                     conf.partition_label, total / 1024, used / 1024);
+        } else {
+            DBG_WARN("SPIFFS 挂载失败: %s\n", esp_err_to_name(ret));
+        }
     }
-    oled_display_task_start();
-    /* 先填充初始显示数据 */
-    g_disp.wifi_on = 0;
-    g_disp.bt_on   = 0;
-    g_disp.ds18b20_temp = 0;
-    g_disp.dht11_temp   = 0;
-    g_disp.dht11_humi   = 0;
-    g_disp.key_count    = 0;
-    g_disp.dirty = true;
+    
+    /* ================================================================
+     * Phase 1 — 硬件初始化（纯寄存器/外设配置，不创建任何任务）
+     * ================================================================ */
+    i2c_obj_t oled_dev;
+    // gpio_install_isr_service(0);                /* GPIO 中断框架（必须在 key_init 之前） */
+    led_init();                                 /* LED GPIO */
+    key_init();                                 /* 按键 GPIO + ISR */
+    oled_dev = iic_init(I2C_NUM_1);             /* I2C 总线 */
+    oled_init(oled_dev);                        /* OLED 控制器 */
+    sensor_init();                              /* DS18B20 + DHT11 */
+    rgb_init();                                 /* WS2812 RMT */
+    wdt_initial();                              /* TWDT 10s */
 
-    if (ds18b20_init() == 0)
-        printf("DS18B20 检测成功\n");
-    else
-        printf("DS18B20 未检测到\n");
+    /* ================================================================
+     * Phase 2 — 数据/队列初始化
+     * ================================================================ */
+    oled_display_init();                        /* 创建队列 + 初始显示数据 */
+    key_event_group = xEventGroupCreate();      /* 创建按键事件组 */
+    DBG_INFO("按键事件组已创建\n");
 
-    if (dht11_init() == 0)
-        printf("DHT11 检测成功\n");
-    else
-        printf("DHT11 未检测到\n");
-
-    rgb_init();
-
-    wdt_initial();
-
-    xTaskCreatePinnedToCore(key_task,"keytask",2048,NULL,6,NULL,0);
-    xTaskCreatePinnedToCore(led_task,"ledtask",2048,NULL,4,NULL,1);
-    // xTaskCreatePinnedToCore(rgb_task,"rgbtask",2048,NULL,3,NULL,1);
+    /* ================================================================
+     * Phase 3 — 统一创建所有任务
+     * ================================================================ */
+    create_all_tasks();
 
     // printf("keytask 剩余栈: %u 字节\n", uxTaskGetStackHighWaterMark(xTaskGetHandle("keytask")));
     // printf("ledtask  剩余栈: %u 字节\n", uxTaskGetStackHighWaterMark(xTaskGetHandle("ledtask")));

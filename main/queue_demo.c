@@ -17,6 +17,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "debug.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
@@ -81,9 +82,9 @@ static void vSenderTask(void *pvParameters)
         BaseType_t ret = xQueueSend(xQueue_int, &val, pdMS_TO_TICKS(100));
 
         if (ret == pdTRUE)
-            printf("[%s] 发送: %ld\n", pcTaskName, (long)val);
+            DBG_DEBUG("[%s] 发送: %ld\n", pcTaskName, (long)val);
         else
-            printf("[%s] 发送失败（队列满）\n", pcTaskName);
+            DBG_WARN("[%s] 发送失败（队列满）\n", pcTaskName);
 
         vTaskDelay(pdMS_TO_TICKS(500));  // 每 500ms 发一次
     }
@@ -121,14 +122,14 @@ static void vReceiverTask(void *pvParameters)
 
         if (ret == pdTRUE)
         {
-            printf("[%s] 收到: %ld\n", pcTaskName, (long)recv_val);
+            DBG_DEBUG("[%s] 收到: %ld\n", pcTaskName, (long)recv_val);
         }
     }
 }
 
 static void queue_demo_basic(void)
 {
-    printf("\n========== 演示 1：基础队列（整型收发）==========\n");
+    DBG_INFO("\n========== 演示 1：基础队列（整型收发）==========\n");
 
     /**
      * xQueueCreate() — 创建队列
@@ -156,10 +157,10 @@ static void queue_demo_basic(void)
 
     if (xQueue_int == NULL)
     {
-        printf("队列创建失败！（堆内存不足）\n");
+        DBG_ERR("队列创建失败！（堆内存不足）\n");
         return;
     }
-    printf("队列创建成功：最大 5 项，每项 %d 字节\n", (int)sizeof(int32_t));
+    DBG_INFO("队列创建成功：最大 5 项，每项 %d 字节\n", (int)sizeof(int32_t));
 
     /* 创建 2 个发送任务 + 1 个接收任务 */
     xTaskCreatePinnedToCore(vSenderTask,   "sender1", 2048, (void *)"sender1", 5, NULL, 0);
@@ -206,7 +207,7 @@ static void vSensorTask(void *pvParameters)
          */
         if (xQueueSend(xQueue_sensor, &data, pdMS_TO_TICKS(50)) == pdTRUE)
         {
-            printf("[传感器] 采集完成: %.1f°C, %.1f%%, tick=%lu\n",
+            DBG_DEBUG("[传感器] 采集完成: %.1f°C, %.1f%%, tick=%lu\n",
                    data.temperature, data.humidity, data.timestamp);
         }
 
@@ -234,7 +235,7 @@ static void vDisplayTask(void *pvParameters)
          */
         xQueueReceive(xQueue_sensor, &data, portMAX_DELAY);
 
-        printf("[显示器] 更新显示: ID=%d, %d.%d°C, %d.%d%%\n",
+        DBG_DEBUG("[显示器] 更新显示: ID=%d, %d.%d°C, %d.%d%%\n",
                data.sensor_id,
                (int)data.temperature, (int)(data.temperature * 10) % 10,
                (int)data.humidity,    (int)(data.humidity * 10) % 10);
@@ -243,7 +244,7 @@ static void vDisplayTask(void *pvParameters)
 
 static void queue_demo_struct(void)
 {
-    printf("\n========== 演示 2：结构体队列（传感器数据）==========\n");
+    DBG_INFO("\n========== 演示 2：结构体队列（传感器数据）==========\n");
 
     /**
      * 创建存储 SensorData_t 的队列
@@ -260,10 +261,10 @@ static void queue_demo_struct(void)
     xQueue_sensor = xQueueCreate(3, sizeof(SensorData_t));
     if (xQueue_sensor == NULL)
     {
-        printf("传感器队列创建失败！\n");
+        DBG_ERR("传感器队列创建失败！\n");
         return;
     }
-    printf("传感器队列创建成功：最大 3 项，每项 %d 字节\n", (int)sizeof(SensorData_t));
+    DBG_INFO("传感器队列创建成功：最大 3 项，每项 %d 字节\n", (int)sizeof(SensorData_t));
 
     xTaskCreatePinnedToCore(vSensorTask,  "sensor",  2048, NULL, 4, NULL, 0);
     xTaskCreatePinnedToCore(vDisplayTask, "display", 2048, NULL, 3, NULL, 1);
@@ -346,13 +347,13 @@ static void vKeyHandlerTask(void *pvParameters)
         key_id  = KEY_ID(key_code);
         action  = KEY_ACTION(key_code);
 
-        printf("[按键处理] K%d ", key_id);
+        DBG_DEBUG("[按键处理] K%d ", key_id);
         switch (action)
         {
-            case 0:  printf("按下\n");     break;
-            case 1:  printf("释放\n");     break;
-            case 2:  printf("长按\n");     break;
-            default: printf("未知动作\n"); break;
+            case 0:  DBG_DEBUG("按下\n");     break;
+            case 1:  DBG_DEBUG("释放\n");     break;
+            case 2:  DBG_DEBUG("长按\n");     break;
+            default: DBG_DEBUG("未知动作\n"); break;
         }
     }
 }
@@ -365,17 +366,17 @@ static void vSimulateButtonTask(void *pvParameters)
     vTaskDelay(pdMS_TO_TICKS(2000));
 
     /* 模拟：K1 按下 */
-    printf("\n[模拟] K1 按下\n");
+    DBG_DEBUG("\n[模拟] K1 按下\n");
     sim_key_isr(1, 0);
     vTaskDelay(pdMS_TO_TICKS(100));
 
     /* 模拟：K1 释放 */
-    printf("[模拟] K1 释放\n");
+    DBG_DEBUG("[模拟] K1 释放\n");
     sim_key_isr(1, 1);
     vTaskDelay(pdMS_TO_TICKS(3000));
 
     /* 模拟：K2 长按 */
-    printf("[模拟] K2 长按\n");
+    DBG_DEBUG("[模拟] K2 长按\n");
     sim_key_isr(2, 2);
 
     vTaskDelay(pdMS_TO_TICKS(1000));
@@ -383,17 +384,17 @@ static void vSimulateButtonTask(void *pvParameters)
 
 static void queue_demo_isr(void)
 {
-    printf("\n========== 演示 3：中断中发送队列 ==========\n");
+    DBG_INFO("\n========== 演示 3：中断中发送队列 ==========\n");
 
     xQueue_key = xQueueCreate(10, sizeof(uint32_t));
     if (xQueue_key == NULL)
     {
-        printf("按键队列创建失败！\n");
+        DBG_ERR("按键队列创建失败！\n");
         return;
     }
-    printf("按键队列创建成功：最大 10 项，每项 %d 字节\n", (int)sizeof(uint32_t));
-    printf("  KEY_CODE(key_id, action) 打包格式：\n");
-    printf("  高 24 位 = key_id，低 8 位 = action\n");
+    DBG_INFO("按键队列创建成功：最大 10 项，每项 %d 字节\n", (int)sizeof(uint32_t));
+    DBG_INFO("  KEY_CODE(key_id, action) 打包格式：\n");
+    DBG_INFO("  高 24 位 = key_id，低 8 位 = action\n");
 
     xTaskCreatePinnedToCore(vKeyHandlerTask,     "key_handler",  2048, NULL, 5, NULL, 0);
     xTaskCreatePinnedToCore(vSimulateButtonTask, "sim_button",   2048, NULL, 3, NULL, 0);
@@ -425,7 +426,7 @@ static void vWorkerTask(void *pvParameters)
          *   - 哪个任务跑得快/优先级高，就更可能抢到
          */
         xQueueReceive(xQueue_cmd, &cmd, portMAX_DELAY);
-        printf("[工人 %d] 执行命令: %d\n", id, cmd);
+        DBG_DEBUG("[工人 %d] 执行命令: %d\n", id, cmd);
         vTaskDelay(pdMS_TO_TICKS(100));  // 模拟处理时间
     }
 }
@@ -439,7 +440,7 @@ static void vCommanderTask(void *pvParameters)
     while (1)
     {
         cmd++;
-        printf("\n[指挥官] 下发命令: %d\n", cmd);
+        DBG_DEBUG("\n[指挥官] 下发命令: %d\n", cmd);
 
         for (int i = 0; i < 4; i++)
         {
@@ -452,14 +453,14 @@ static void vCommanderTask(void *pvParameters)
 
 static void queue_demo_multi_recv(void)
 {
-    printf("\n========== 演示 4：多接收者竞争同一队列 ==========\n");
-    printf("一个命令队列，3 个工人抢活干\n");
-    printf("  ★ 每条消息只能被一个工人接收\n");
-    printf("  ★ 不会重复分发\n\n");
+    DBG_INFO("\n========== 演示 4：多接收者竞争同一队列 ==========\n");
+    DBG_INFO("一个命令队列，3 个工人抢活干\n");
+    DBG_INFO("  ★ 每条消息只能被一个工人接收\n");
+    DBG_INFO("  ★ 不会重复分发\n\n");
 
     xQueue_cmd = xQueueCreate(10, sizeof(int));
     if (xQueue_cmd == NULL) {
-        printf("命令队列创建失败！\n");
+        DBG_ERR("命令队列创建失败！\n");
         return;
     }
 
@@ -481,17 +482,17 @@ static void queue_demo_multi_recv(void)
  */
 void queue_demo_main(void)
 {
-    printf("\n");
-    printf("========================================\n");
-    printf("  FreeRTOS 队列（Queue）演示\n");
-    printf("========================================\n");
-    printf("\n");
-    printf("队列是任务间通信的桥梁：\n");
-    printf("  生产者（发） → [队列 FIFO] → 消费者（收）\n");
-    printf("  ★ 数据<拷贝>进队列，不是传指针\n");
-    printf("  ★ 队列空 → 接收者阻塞；队列满 → 发送者阻塞\n");
-    printf("  ★ ISR 中必须用 xQueueSendFromISR()\n");
-    printf("  ★ 多接收者竞争时，每条消息只到一个接收者\n");
+    DBG_INFO("\n");
+    DBG_INFO("========================================\n");
+    DBG_INFO("  FreeRTOS 队列（Queue）演示\n");
+    DBG_INFO("========================================\n");
+    DBG_INFO("\n");
+    DBG_INFO("队列是任务间通信的桥梁：\n");
+    DBG_INFO("  生产者（发） → [队列 FIFO] → 消费者（收）\n");
+    DBG_INFO("  ★ 数据<拷贝>进队列，不是传指针\n");
+    DBG_INFO("  ★ 队列空 → 接收者阻塞；队列满 → 发送者阻塞\n");
+    DBG_INFO("  ★ ISR 中必须用 xQueueSendFromISR()\n");
+    DBG_INFO("  ★ 多接收者竞争时，每条消息只到一个接收者\n");
 
     /* 依次运行每个演示 */
     queue_demo_basic();

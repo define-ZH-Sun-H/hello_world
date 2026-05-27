@@ -97,7 +97,6 @@ uint8_t ds18b20_init(void)
 // 获取温度，返回 温度×10（如 25.5°C → 255）
 short ds18b20_get_temperature(void)
 {
-    ds18b20_start();                    // 启动转换
     ds18b20_reset();
     ds18b20_check();
     ds18b20_write_byte(0xcc);           // 跳过 ROM

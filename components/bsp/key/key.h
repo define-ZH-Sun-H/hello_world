@@ -23,6 +23,10 @@
 
 #include "driver/gpio.h"
 
+/* 按键事件组句柄类型前置声明（避免头文件引入全部 FreeRTOS 依赖） */
+struct EventGroupDef_t;
+typedef struct EventGroupDef_t *EventGroupHandle_t;
+
 /* 按键引脚定义 */
 #define KEY1_GPIO_PIN               GPIO_NUM_36
 #define KEY2_GPIO_PIN               GPIO_NUM_37
@@ -44,8 +48,17 @@ typedef enum {
     KEY_IND_EVENT_CLICK_MULTI    // 连击事件（2次、3次等）
 } KeyIndEventType;
 
+/* 按键事件组位掩码 */
+#define KEY_EVENT_BIT_1     (1 << 0)    // KEY1 → bit 0
+#define KEY_EVENT_BIT_2     (1 << 1)    // KEY2 → bit 1
+#define KEY_EVENT_BIT_3     (1 << 2)    // KEY3 → bit 2
+#define KEY_EVENT_BIT_4     (1 << 3)    // KEY4 → bit 3
+
 /* 函数声明 */
 void key_init(void);
 void key_task(void *pvParameters);
+
+/* 按键事件组句柄（app_main Phase 2 中创建，key_task 写入，其他任务读取） */
+extern EventGroupHandle_t key_event_group;
 
 #endif

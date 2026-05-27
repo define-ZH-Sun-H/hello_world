@@ -8,5 +8,6 @@
       "Agent"
     ],
     "defaultMode": "dontAsk"
-  }
+  },
+  "enabledMcpjsonServers": ["codegraph"]
 }

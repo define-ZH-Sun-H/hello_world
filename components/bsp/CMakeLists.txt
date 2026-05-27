@@ -4,7 +4,8 @@ set(src_dirs
             led
             oled
             rgb
-            sensor)
+            sensor
+            debug)
 
 set(include_dirs
             .
@@ -13,7 +14,8 @@ set(include_dirs
             led
             oled
             rgb
-            sensor)
+            sensor
+            debug)
 
 set(requires
             driver)

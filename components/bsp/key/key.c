@@ -25,14 +25,19 @@
 #include "dht11.h"
 #include "oled_display.h"
 #include "rgb.h"
+#include "debug.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"        // for xSemaphoreCreateBinary / GiveFromISR / Take
+#include "freertos/event_groups.h"  // for xEventGroupSetBits / ClearBits / WaitBits
 #include "esp_task_wdt.h"
 
 /* 二值信号量句柄：按键按下时 ISR 给出，key_task 阻塞等待 */
 SemaphoreHandle_t key_sem = NULL;
+
+/* 按键事件组句柄 */
+EventGroupHandle_t key_event_group = NULL;
 
 /* 按键中断服务函数（IRAM_ATTR 确保存放在 RAM 中，快速响应） */
 static void IRAM_ATTR key_isr_handler(void *arg)
@@ -57,11 +62,13 @@ KeyIndEventType KeyInd_Event[KEY_IND_COUNT];   // 事件类型数组
 uint8_t KeyInd_HasEvent[KEY_IND_COUNT];        // 是否有新事件数组
 
 /**
- * @brief   按键初始化：安装 ISR 服务、配置 GPIO 下降沿中断、创建信号量、注册 ISR
+ * @brief   按键初始化：配置 GPIO 下降沿中断、注册 ISR
+ *
+ * @note 只做硬件初始化，不创建任务 —— key_task 由 app_main 统一创建。
  */
 void key_init(void)
 {
-    /* ② 配置 4 个按键 GPIO：上拉输入 + 下降沿中断 */
+    /* 配置 4 个按键 GPIO：上拉输入 + 下降沿中断 */
     gpio_config_t io_conf = {
         .pin_bit_mask = (1ULL << KEY1_GPIO_PIN) |
                         (1ULL << KEY2_GPIO_PIN) |
@@ -74,17 +81,17 @@ void key_init(void)
     };
     gpio_config(&io_conf);
 
-    // /* ③ 创建二值信号量（初始值为 0，第一次 Take 会阻塞） */
+    // /* 创建二值信号量（初始值为 0，第一次 Take 会阻塞） */
     // key_sem = xSemaphoreCreateBinary();
-    printf("按键信号量已创建\n");
+    DBG_INFO("按键信号量已创建\n");
 
-    /* ④ 为每个按键注册中断服务函数 */
-    gpio_isr_handler_add(KEY1_GPIO_PIN, key_isr_handler, (void *)KEY1_GPIO_PIN);
-    gpio_isr_handler_add(KEY2_GPIO_PIN, key_isr_handler, (void *)KEY2_GPIO_PIN);
-    gpio_isr_handler_add(KEY3_GPIO_PIN, key_isr_handler, (void *)KEY3_GPIO_PIN);
-    gpio_isr_handler_add(KEY4_GPIO_PIN, key_isr_handler, (void *)KEY4_GPIO_PIN);
+    /* 为每个按键注册中断服务函数 */
+    // gpio_isr_handler_add(KEY1_GPIO_PIN, key_isr_handler, (void *)KEY1_GPIO_PIN);
+    // gpio_isr_handler_add(KEY2_GPIO_PIN, key_isr_handler, (void *)KEY2_GPIO_PIN);
+    // gpio_isr_handler_add(KEY3_GPIO_PIN, key_isr_handler, (void *)KEY3_GPIO_PIN);
+    // gpio_isr_handler_add(KEY4_GPIO_PIN, key_isr_handler, (void *)KEY4_GPIO_PIN);
 
-    printf("按键中断已注册（KEY1~KEY4）\n");
+    DBG_INFO("按键中断已注册（KEY1~KEY4）\n");
 }
 
 
@@ -95,7 +102,7 @@ void KeyInd_Scan(void)
 {
     uint8_t i;
     uint8_t currentPinState;
-    for (i = 0; i < KEY_IND_COUNT; i++) 
+    for (i = 0; i < KEY_IND_COUNT; i++)
     {
         switch (i) {
         case 0: currentPinState = gpio_get_level(KEY1_GPIO_PIN); break;
@@ -187,16 +194,19 @@ void KeyInd_HandleEvents(void) {
             case KEY_IND_EVENT_PRESS:
                 LED_Flag = !LED_Flag;
                 rgb_set_color(255, 0, 0);
-                printf("K1 按下\n");
+                xEventGroupSetBits(key_event_group, KEY_EVENT_BIT_1);
+                { disp_msg_t m = { .type = DISP_MSG_SCREEN_WAKE }; xQueueSend(disp_queue, &m, 0); }
+                DBG_DEBUG("K1 按下\n");
                 break;
             case KEY_IND_EVENT_LONG_PRESS:
-                printf("K1 长按\n");
+                DBG_DEBUG("K1 长按\n");
                 break;
             case KEY_IND_EVENT_RELEASE:
-                printf("K1 释放\n");
+                xEventGroupClearBits(key_event_group, KEY_EVENT_BIT_1);
+                DBG_DEBUG("K1 释放\n");
                 break;
             case KEY_IND_EVENT_CLICK_MULTI:
-                printf("K1 连击 %d 次\n", KeyInd_ClickCnt[i]);
+                DBG_DEBUG("K1 连击 %d 次\n", KeyInd_ClickCnt[i]);
                 break;
             default:
                 break;
@@ -208,28 +218,19 @@ void KeyInd_HandleEvents(void) {
             case KEY_IND_EVENT_PRESS:
                 LED_Flag = !LED_Flag;
                 rgb_set_color(255, 255, 0);
-                printf("K2 按下\n");
+                xEventGroupSetBits(key_event_group, KEY_EVENT_BIT_2);
+                { disp_msg_t m = { .type = DISP_MSG_SCREEN_WAKE }; xQueueSend(disp_queue, &m, 0); }
+                DBG_DEBUG("K2 按下\n");
                 break;
             case KEY_IND_EVENT_LONG_PRESS:
-            {
-                short ds_temp = ds18b20_get_temperature();
-                if (ds_temp < 0)
-                    printf("DS18B20: -%d.%d°C\n", (-ds_temp) / 10, (-ds_temp) % 10);
-                else
-                    printf("DS18B20: %d.%d°C\n", ds_temp / 10, ds_temp % 10);
-
-                uint8_t dh_temp, dh_humi;
-                if (dht11_read_data(&dh_temp, &dh_humi) == 0)
-                    printf("DHT11:   %d°C, %d%%RH\n", dh_temp, dh_humi);
-                else
-                    printf("DHT11:   读取失败\n");
+                DBG_DEBUG("K2 长按\n");
                 break;
-            }
             case KEY_IND_EVENT_RELEASE:
-                printf("K2 释放\n");
+                xEventGroupClearBits(key_event_group, KEY_EVENT_BIT_2);
+                DBG_DEBUG("K2 释放\n");
                 break;
             case KEY_IND_EVENT_CLICK_MULTI:
-                printf("K2 连击 %d 次\n", KeyInd_ClickCnt[i]);
+                DBG_DEBUG("K2 连击 %d 次\n", KeyInd_ClickCnt[i]);
                 break;
             default:
                 break;
@@ -241,21 +242,19 @@ void KeyInd_HandleEvents(void) {
             case KEY_IND_EVENT_PRESS:
                 LED_Flag = !LED_Flag;
                 rgb_set_color(0, 0, 255);
-                printf("K3 按下\n");
-                {
-                    short t = ds18b20_get_temperature();
-                    disp_msg_t msg3 = { .type = DISP_MSG_DS18B20_TEMP, .val1 = t };
-                    xQueueSend(disp_queue, &msg3, 0);
-                }
+                xEventGroupSetBits(key_event_group, KEY_EVENT_BIT_3);
+                { disp_msg_t m = { .type = DISP_MSG_SCREEN_WAKE }; xQueueSend(disp_queue, &m, 0); }
+                DBG_DEBUG("K3 按下\n");
                 break;
             case KEY_IND_EVENT_LONG_PRESS:
-                printf("K3 长按\n");
+                DBG_DEBUG("K3 长按\n");
                 break;
             case KEY_IND_EVENT_RELEASE:
-                printf("K3 释放\n");
+                xEventGroupClearBits(key_event_group, KEY_EVENT_BIT_3);
+                DBG_DEBUG("K3 释放\n");
                 break;
             case KEY_IND_EVENT_CLICK_MULTI:
-                printf("K3 连击 %d 次\n", KeyInd_ClickCnt[i]);
+                DBG_DEBUG("K3 连击 %d 次\n", KeyInd_ClickCnt[i]);
                 break;
             default:
                 break;
@@ -267,23 +266,19 @@ void KeyInd_HandleEvents(void) {
             case KEY_IND_EVENT_PRESS:
                 LED_Flag = !LED_Flag;
                 rgb_set_color(255, 255, 255);
-                printf("K4 按下\n");
-                {
-                    uint8_t t, h;
-                    if (dht11_read_data(&t, &h) == 0) {
-                        disp_msg_t msg4 = { .type = DISP_MSG_DHT11_DATA, .val1 = t, .val2 = h };
-                        xQueueSend(disp_queue, &msg4, 0);
-                    }
-                }
+                xEventGroupSetBits(key_event_group, KEY_EVENT_BIT_4);
+                { disp_msg_t m = { .type = DISP_MSG_SCREEN_WAKE }; xQueueSend(disp_queue, &m, 0); }
+                DBG_DEBUG("K4 按下\n");
                 break;
             case KEY_IND_EVENT_LONG_PRESS:
-                printf("K4 长按\n");
+                DBG_DEBUG("K4 长按\n");
                 break;
             case KEY_IND_EVENT_RELEASE:
-                printf("K4 释放\n");
+                xEventGroupClearBits(key_event_group, KEY_EVENT_BIT_4);
+                DBG_DEBUG("K4 释放\n");
                 break;
             case KEY_IND_EVENT_CLICK_MULTI:
-                printf("K4 连击 %d 次\n", KeyInd_ClickCnt[i]);
+                DBG_DEBUG("K4 连击 %d 次\n", KeyInd_ClickCnt[i]);
                 break;
             default:
                 break;
@@ -297,6 +292,19 @@ void KeyInd_HandleEvents(void) {
         if (i < KEY_IND_COUNT) {
             KeyInd_Event[i] = KEY_IND_EVENT_NONE;
             KeyInd_HasEvent[i] = 0;
+        }
+    }
+    /* KEY1+KEY2 同时按下 → 关闭 RGB LED（使用事件组检测） */
+    {
+        EventBits_t bits = xEventGroupWaitBits(
+                key_event_group,
+                KEY_EVENT_BIT_1 | KEY_EVENT_BIT_2,
+                pdTRUE,         /* 清除 bit（一次性检测，避免重复触发） */
+                pdTRUE,         /* AND：两个按键都按下 */
+                0);             /* 不阻塞，纯轮询 */
+        if ((bits & (KEY_EVENT_BIT_1 | KEY_EVENT_BIT_2)) == (KEY_EVENT_BIT_1 | KEY_EVENT_BIT_2)) {
+            rgb_clear();
+            DBG_DEBUG("KEY1+KEY2 组合键: RGB 关闭\n");
         }
     }
 }
