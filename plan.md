@@ -194,13 +194,13 @@
 
 ### 具体任务
 
-1. **SPIFFS 配置文件存储**
+1. **SPIFFS 配置文件存储** [知识文档](docs/计划知识点/4-1_SPIFFS配置文件存储.md)
    - 分区表增加 storage 分区
    - 挂载 SPIFFS: `esp_vfs_spiffs_register()`
    - 写入/读取 WiFi 配置、校准参数
    - 使用标准 POSIX API（fopen/fread/fwrite/fprintf）
 
-2. **SD 卡数据记录**
+2. **SD 卡数据记录** [知识文档](docs/计划知识点/4-3_SD卡数据记录.md)
    - SDMMC 或 SDSPI 接口挂载 SD 卡
    - 定时任务每 5 分钟将温湿度数据写入 CSV 文件
    - 按键触发拍照：SD 卡存储 JPEG 图片

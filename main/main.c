@@ -17,6 +17,7 @@
 #include "esp_spiffs.h"
 #include "bsp.h"
 #include "rgb.h"
+#include "wifi.h"
 
 extern void queue_demo_main(void);
 
@@ -32,11 +33,8 @@ static void rgb_task(void *pv)
 
 void wdt_initial(void)
 {
-    /* bootloader 可能已初始化 TWDT，先反初始化再重配 */
-    esp_task_wdt_deinit();
-
     esp_task_wdt_config_t twdt_config = {
-        .timeout_ms = 10000,
+        .timeout_ms = 15000,
         .idle_core_mask = (1 << 0) | (1 << 1),
         .trigger_panic = true,
     };
@@ -64,7 +62,6 @@ static void create_all_tasks(void)
     // xTaskCreatePinnedToCore(rgb_task, "rgbtask", 2048, NULL, 3, NULL, 1);
 }
 
-
 void app_main(void)
 {
     esp_chip_info_t chip_info;
@@ -78,6 +75,17 @@ void app_main(void)
            (chip_info.features & CHIP_FEATURE_IEEE802154) ? ", 802.15.4 (Zigbee/Thread)" : "");
         /* ================================================================
      * SPIFFS 挂载 — 配置文件存储
+     *
+     * 使用 "storage" 分区存放：
+     *   - WiFi / MQTT 配置（JSON）
+     *   - 用户设置（亮度、主题色等）
+     *   - 传感器校准数据（偏移值）
+     *
+     * 关键配置：
+     *        *   base_path          挂载点路径，文件用 "/spiffs/" 访问
+     *   partition_label    指向 partitions.csv 中 name="storage" 的分区
+     *   max_files          最大同时打开文件数（省 RAM，按需设小）
+     *   format_if_mount_failed  挂载失败自动格式化（首次启动/崩溃后自救）
      * ================================================================ */
     {
         esp_vfs_spiffs_conf_t conf = {
@@ -110,6 +118,19 @@ void app_main(void)
     rgb_init();                                 /* WS2812 RMT */
     wdt_initial();                              /* TWDT 10s */
 
+    /* SD 卡（SPI 模式）— 非阻塞，无卡也不影响启动 */
+    {
+        esp_err_t sd_ret = sd_spi_init();
+        if (sd_ret == ESP_OK) {
+            size_t total = 0, free = 0;
+            sd_get_fatfs_usage(&total, &free);
+            DBG_INFO("SD 卡挂载成功: %s, 总 %d MB, 可用 %d MB\n",
+                     SD_MOUNT_POINT, (int)(total / (1024*1024)), (int)(free / (1024*1024)));
+        } else {
+            DBG_WARN("SD 卡挂载失败: %s（无卡不影响运行）\n", esp_err_to_name(sd_ret));
+        }
+    }
+
     /* ================================================================
      * Phase 2 — 数据/队列初始化
      * ================================================================ */
@@ -121,6 +142,11 @@ void app_main(void)
      * Phase 3 — 统一创建所有任务
      * ================================================================ */
     create_all_tasks();
+
+    /* ================================================================
+     * Phase 4 — WiFi Station 连接
+     * ================================================================ */
+    wifi_init_sta();
 
     // printf("keytask 剩余栈: %u 字节\n", uxTaskGetStackHighWaterMark(xTaskGetHandle("keytask")));
     // printf("ledtask  剩余栈: %u 字节\n", uxTaskGetStackHighWaterMark(xTaskGetHandle("ledtask")));

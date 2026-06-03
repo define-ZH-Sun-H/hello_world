@@ -9,5 +9,6 @@
 #include "dht11.h"
 #include "ds18b20.h"
 #include "sensor_init.h"
+#include "sd.h"
 
 #endif

@@ -93,92 +93,431 @@ esp_spiffs_gc("storage", 4096);  // 回收 4KB
 
 ## 5. POSIX 文件操作 API
 
-基于 VFS（Virtual File System），挂载后使用标准 C 库函数。
+SPIFFS 挂载后，通过 ESP-IDF 的 VFS（Virtual File System）层把标准 C 的文件函数（fopen、fread 等）重定向到 Flash 上。你不需要学任何新 API，用你学 C 语言时就见过的 `<stdio.h>` 函数就行。
 
-### 核心函数
+### 5.1 核心概念：FILE 指针
 
-| 函数 | 用途 | 示例 |
+```c
+FILE *f = fopen("/spiffs/config.txt", "r");
+```
+
+- `fopen` 返回一个 `FILE *` 指针，后续所有操作都通过这个指针
+- 第一个参数是文件路径，**必须带 `/spiffs/` 前缀**（这是挂载时的 `base_path`）
+- 第二个参数是**打开模式**，初学者最容易搞错的地方
+
+### 5.2 打开模式详解
+
+| 模式 | 读？ | 写？ | 文件不存在？ | 文件已存在？ |
+|------|------|------|-------------|-------------|
+| `"r"` | ✅ | ❌ | 返回 NULL（报错） | 正常读取 |
+| `"w"` | ❌ | ✅ | 创建新文件 | **清空内容**重新写 |
+| `"a"` | ❌ | ✅ | 创建新文件 | 末尾追加 |
+| `"r+"` | ✅ | ✅ | 返回 NULL | 覆盖写（不 truncate） |
+| `"w+"` | ✅ | ✅ | 创建新文件 | **清空内容**重新写 |
+| `"a+"` | ✅ | ✅ | 创建新文件 | 末尾追加 |
+
+**初学者最容易犯的错：** 用 `"w"` 打开一个只想读的文件——文件内容会被清空。想读取现有文件一定用 `"r"`。
+
+### 5.3 核心函数 · 逐个拆解
+
+#### fopen / fclose — 开和关
+
+```c
+FILE *f = fopen("/spiffs/config.txt", "r");
+if (f == NULL) {
+    // 文件不存在或打开失败，这里要处理
+    ESP_LOGE(TAG, "打开文件失败");
+    return;
+}
+
+// ... 读写操作 ...
+
+fclose(f);  // 一定要关！否则泄漏文件描述符
+```
+
+**黄金法则：** `fopen` 和 `fclose` 要像括号一样配对出现。写完 `fopen` 立刻写 `fclose`，再往中间填代码。
+
+#### fread — 读二进制数据
+
+```c
+char buf[256];
+FILE *f = fopen("/spiffs/config.txt", "r");
+if (f == NULL) return;
+
+size_t read_count = fread(buf, 1, sizeof(buf), f);
+// read_count 是实际读到的字节数
+// 返回值可能小于 sizeof(buf)，说明文件没那么大
+buf[read_count] = '\0';  // 如果当文本用，记得加字符串结尾
+
+fclose(f);
+```
+
+**参数含义：** `fread(往哪里存, 每个元素多大, 最多读几个, 文件指针)`
+`fread(buf, 1, sizeof(buf), f)` = "每次读 1 字节，最多读 256 次"
+
+#### fwrite — 写二进制数据
+
+```c
+const char *text = "Hello SPIFFS!";
+FILE *f = fopen("/spiffs/config.txt", "w");
+if (f == NULL) return;
+
+size_t written = fwrite(text, 1, strlen(text), f);
+if (written != strlen(text)) {
+    ESP_LOGE(TAG, "写入字节数不对");
+}
+
+fclose(f);
+```
+
+#### fprintf — 按格式写文本（最方便）
+
+```c
+FILE *f = fopen("/spiffs/config.txt", "w");
+if (f == NULL) return;
+
+fprintf(f, "ssid=%s\n", wifi_ssid);
+fprintf(f, "password=%s\n", wifi_password);
+fprintf(f, "brightness=%d\n", brightness);
+
+fclose(f);
+```
+
+`fprintf` 和 `printf` 用法一样，只是输出目标从屏幕换成了文件。
+
+#### fgets — 逐行读文本
+
+```c
+FILE *f = fopen("/spiffs/config.txt", "r");
+if (f == NULL) return;
+
+char line[128];
+while (fgets(line, sizeof(line), f) != NULL) {
+    // 每次读一行，读到换行符或 buffer 满为止
+    // 行尾的 '\n' 也会被读进来，通常要去掉
+    size_t len = strlen(line);
+    if (line[len - 1] == '\n') line[len - 1] = '\0';
+    
+    printf("读到: %s\n", line);
+}
+
+fclose(f);
+```
+
+#### fseek / ftell — 跳转位置和查询位置
+
+```c
+// 跳到文件开头
+fseek(f, 0, SEEK_SET);
+
+// 跳到文件末尾（通常用来算文件大小）
+fseek(f, 0, SEEK_END);
+long file_size = ftell(f);  // 从文件头到当前位置的字节数
+rewind(f);                  // 跳回开头，等价于 fseek(f, 0, SEEK_SET)
+```
+
+`SEEK_SET` = 从文件头算，`SEEK_CUR` = 从当前位置算，`SEEK_END` = 从文件尾算。
+
+### 5.4 完整示例：读写配置文件（初学者模板）
+
+```c
+/* ── 写入 ── */
+void save_config(void)
+{
+    FILE *f = fopen("/spiffs/config.txt", "w");
+    if (f == NULL) {
+        ESP_LOGE(TAG, "无法创建配置文件");
+        return;
+    }
+    
+    fprintf(f, "wifi_ssid=MyHomeWiFi\n");
+    fprintf(f, "wifi_pass=12345678\n");
+    fprintf(f, "brightness=80\n");
+    
+    fclose(f);  // 这里才真正写入 Flash
+    ESP_LOGI(TAG, "配置已保存");
+}
+
+/* ── 读取 ── */
+void load_config(void)
+{
+    FILE *f = fopen("/spiffs/config.txt", "r");
+    if (f == NULL) {
+        ESP_LOGI(TAG, "配置文件不存在，使用默认值");
+        return;  // 首次启动，文件还不存在，不是错误
+    }
+    
+    char line[64];
+    while (fgets(line, sizeof(line), f) != NULL) {
+        // 去掉行尾的换行符
+        size_t len = strlen(line);
+        if (len > 0 && line[len-1] == '\n') line[len-1] = '\0';
+        
+        // 解析 key=value
+        char key[32], value[32];
+        if (sscanf(line, "%31[^=]=%31s", key, value) == 2) {
+            if (strcmp(key, "brightness") == 0) {
+                brightness = atoi(value);
+            }
+            // 解析更多字段...
+        }
+    }
+    
+    fclose(f);
+}
+```
+
+### 5.5 其他实用函数
+
+| 函数 | 作用 | 示例 |
 |------|------|------|
-| `fopen()` | 打开/创建文件 | `fopen("/spiffs/config.txt", "r")` |
-| `fprintf()` | 文本格式写入 | `fprintf(f, "key=%s\n", value)` |
-| `fwrite()` | 二进制写入 | `fwrite(buf, 1, size, f)` |
-| `fread()` | 二进制读取 | `fread(buf, 1, size, f)` |
-| `fgets()` | 逐行读取文本 | `fgets(line, sizeof(line), f)` |
-| `fseek()` | 定位 | `fseek(f, 0, SEEK_SET)` |
-| `ftell()` | 当前位置 | `long pos = ftell(f)` |
-| `fclose()` | 关闭 | `fclose(f)` |
+| `remove()` | 删除文件 | `remove("/spiffs/config.txt")` |
+| `rename()` | 重命名 | `rename("/spiffs/tmp.txt", "/spiffs/config.txt")` |
+| `stat()` | 获取文件信息 | `stat("/spiffs/config.txt", &st)` → `st.st_size` 是文件大小 |
 
-### 补充函数
-- `remove("/spiffs/config.txt")` — 删除文件
-- `rename("/spiffs/old.txt", "/spiffs/new.txt")` — 重命名
-- `stat("/spiffs/config.txt", &st)` — 获取文件大小等元信息
+**rename 的使用场景：** 写入新配置时，先写到 `config.tmp`，成功后 `rename` 覆盖旧文件。这样即使写入过程中掉电，也不会损坏现有配置（原子写入技巧）。
 
-### 重要注意点
-- SPIFFS 文件最大尺寸受分区大小和碎片影响，建议单文件不超过分区 10%
-- `fclose()` 后数据实际刷入 Flash（`fflush()` 只刷到 VFS 层）
-- `fopen("w")` 会截断现有文件，`"a"` 追加
-- **目录操作（mkdir/opendir）在 SPIFFS 上不可用**
+### 5.6 初学者最容易踩的坑
+
+| ❌ 错误 | ✅ 正确 | 原因 |
+|---------|---------|------|
+| 忘记 `fclose()` | 配对 `fopen/fclose` | SPIFFS 只有 `fclose` 时才真正往 Flash 写数据 |
+| 用 `"w"` 打开现有文件 | 确认意图：读用 `"r"`，写用 `"w"` | `"w"` 会清空文件！ |
+| `fgets` 不处理 `\n` | `if(line[len-1]=='\n') line[len-1]='\0'` | 否则比较字符串时末尾有个看不见的换行 |
+| 假设一次 `fread` 能读完 | 检查返回值，可能只读了一部分 | `fread` 返回值才是实际读到的字节数 |
+| 用 `fflush` 以为刷入了 Flash | 只有 `fclose` 才保证写入 Flash | `fflush` 只刷到 RAM 缓冲区 |
+| 在 SPIFFS 上 `mkdir` | 别用，SPIFFS 不支持目录 | 所有文件都在一个平层里 |
 
 ---
 
 ## 6. 配置文件格式选择
 
-### 格式对比
+### 6.1 选择之前：先理解你的数据
 
-| 格式 | 优点 | 缺点 | 推荐场景 |
-|------|------|------|----------|
-| **cJSON** | 人类可读、灵活、可扩展 | 解析开销大，代码量多，大 JSON 占用栈 | WiFi 配置等多字段场景 |
-| **自定义 INI/KV** | 极轻量、解析快 | 灵活性差 | 少量参数（2-5 个） |
-| **NVS** | ESP-IDF 内置 key-value API | 不适合结构化数据、大小有限 | 替代 SPIFFS 的超轻量配置 |
+在嵌入式设备上存配置，本质上就是解决一个问题：**把内存中的结构体/变量变成字节存起来，下次开机再变回来**。
 
-### cJSON 写入示例
+选择哪种格式，取决于你有几个配置项：
 
-```c
-// 构建 JSON 对象
-cJSON *root = cJSON_CreateObject();
-cJSON_AddStringToObject(root, "ssid", "MyWiFi");
-cJSON_AddStringToObject(root, "password", "12345678");
-cJSON_AddNumberToObject(root, "calib_offset", 12);
+| 配置项数量 | 推荐方式 | 理由 |
+|-----------|---------|------|
+| 1-5 个 | 自定义 KEY=VALUE | 代码最少，一眼看懂 |
+| 5-20 个 | cJSON | 结构化，可扩展，人类可读 |
+| 只有几个数字 | NVS（ESP-IDF 内置） | 连 SPIFFS 都不用，API 最简 |
+| 大量结构化数据 | cJSON | 可嵌套、可加字段不破坏兼容性 |
 
-// 序列化为字符串
-char *json = cJSON_Print(root);
+### 6.2 三种方案详细对比
 
-// 写入文件
-fopen("/spiffs/config.json", "w");
-fwrite(json, 1, strlen(json), f);
-fclose(f);
+| 特性 | cJSON（推荐） | 自定义 KEY=VALUE | NVS |
+|------|-------------|-----------------|-----|
+| 学习成本 | 中等，要学几个 API | 低，sscanf 就行 | 低，API 极其简单 |
+| 代码量 | 中等（序列化/反序列化） | 少 | 极少 |
+| 人类可读 | ✅ 格式化后一目了然 | ✅ 勉强可读 | ❌ 二进制，看不到 |
+| 增加字段 | ✅ 加一个 JSON key 就行 | ✅ 加一行 | ✅ 加一个 key |
+| 嵌套结构 | ✅ 支持对象的对象 | ❌ 扁平 KV | ❌ 扁平 KV |
+| 解析开销 | ⚠️ 需要 JSON 解析器（约 4KB ROM） | 极小 | 极小 |
+| RAM 占用 | ⚠️ JSON 字符串需要 buffer（至少几百字节） | 很小 | 很小 |
 
-// 清理
-cJSON_Delete(root);
-free(json);
+### 6.3 什么是 JSON（给初学者的解释）
+
+JSON 就是一套规则，把数据写成"名字：值"的格式：
+
+```json
+{
+    "ssid": "MyHomeWiFi",
+    "password": "12345678",
+    "brightness": 80,
+    "sensor": {
+        "temp_offset": 0.5,
+        "update_interval_s": 60
+    }
+}
 ```
 
-### cJSON 读取示例
+- 冒号左边叫 **key**（键），右边叫 **value**（值）
+- 值可以是：字符串（双引号）、数字（不带引号）、布尔、数组、对象（嵌套的 `{}`）
+- 用 `cJSON` 库就是把这些文本和 C 语言的 `char*` / `int` / `double` 互相转换
+
+### 6.4 cJSON 核心函数速查
+
+初学者只需要记 6 个函数：
 
 ```c
-// 读取文件
-FILE *f = fopen("/spiffs/config.json", "r");
-if (f == NULL) {
-    // 文件不存在，使用默认配置
-    return;
-}
-fread(buf, 1, sizeof(buf), f);
-fclose(f);
+// ---- 创建 / 构造（内存 → JSON 文本） ----
+cJSON *root = cJSON_CreateObject();                     // 建一个空对象 {}
+cJSON_AddStringToObject(root, "ssid", "MyWiFi");        // 加字符串
+cJSON_AddNumberToObject(root, "brightness", 80);        // 加数字
+cJSON_AddBoolToObject(root, "enable_led", true);        // 加布尔
 
-// 解析 JSON
-cJSON *root = cJSON_Parse(buf);
-if (root == NULL) {
-    ESP_LOGE(TAG, "JSON parse error");
-    return;
-}
+char *json_str = cJSON_Print(root);                     // 格式化输出（含换行和缩进）
+char *json_str = cJSON_PrintUnformatted(root);          // 紧凑输出（省空间）
 
-cJSON *ssid = cJSON_GetObjectItem(root, "ssid");
+// ---- 解析（JSON 文本 → 内存） ----
+cJSON *root = cJSON_Parse(json_str);                    // 解析 JSON 文本
+cJSON *ssid = cJSON_GetObjectItem(root, "ssid");        // 按 key 取值
 if (cJSON_IsString(ssid)) {
-    strlcpy(wifi_ssid, ssid->valuestring, sizeof(wifi_ssid));
+    // 用 ssid->valuestring 拿到字符串
 }
 
-cJSON_Delete(root);
+// ---- 清理 ----
+cJSON_Delete(root);  // 释放所有 cJSON 对象
+free(json_str);       // cJSON_Print 返回的字符串要手动 free
 ```
+
+### 6.5 cJSON 完整读写示例（带错误处理）
+
+```c
+/* ===========================================================
+ * 写入配置到 SPIFFS（cJSON 版）
+ * =========================================================== */
+esp_err_t config_save(void)
+{
+    // 1. 在内存中构建 JSON 对象
+    cJSON *root = cJSON_CreateObject();
+    if (root == NULL) return ESP_ERR_NO_MEM;
+    
+    cJSON_AddStringToObject(root, "ssid",         wifi_ssid);
+    cJSON_AddStringToObject(root, "password",     wifi_password);
+    cJSON_AddNumberToObject(root, "brightness",   display_brightness);
+    cJSON_AddNumberToObject(root, "temp_offset",  temp_calib_offset);
+    
+    // 2. 序列化为文本
+    char *json_text = cJSON_Print(root);     // ← 这行分配了内存
+    if (json_text == NULL) {
+        cJSON_Delete(root);
+        return ESP_ERR_NO_MEM;
+    }
+    
+    // 3. 写入 SPIFFS
+    FILE *f = fopen("/spiffs/config.json", "w");
+    if (f == NULL) {
+        free(json_text);
+        cJSON_Delete(root);
+        return ESP_ERR_NOT_FOUND;
+    }
+    
+    fprintf(f, "%s", json_text);
+    fclose(f);
+    
+    // 4. 清理内存（容易忘！）
+    free(json_text);
+    cJSON_Delete(root);
+    
+    ESP_LOGI(TAG, "配置已保存");
+    return ESP_OK;
+}
+
+/* ===========================================================
+ * 从 SPIFFS 读取配置（cJSON 版）
+ * =========================================================== */
+esp_err_t config_load(void)
+{
+    // 1. 从 SPIFFS 读出全部文本
+    FILE *f = fopen("/spiffs/config.json", "r");
+    if (f == NULL) {
+        ESP_LOGI(TAG, "配置文件不存在，使用默认配置");
+        return ESP_ERR_NOT_FOUND;    // 首次启动正常，不是错误
+    }
+    
+    // 2. 读文件到 buffer
+    char buf[1024];
+    size_t read_len = fread(buf, 1, sizeof(buf) - 1, f);
+    buf[read_len] = '\0';
+    fclose(f);
+    
+    // 3. 解析 JSON
+    cJSON *root = cJSON_Parse(buf);
+    if (root == NULL) {
+        const char *err = cJSON_GetErrorPtr();
+        ESP_LOGE(TAG, "JSON 解析出错: %s", err ? err : "未知");
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    // 4. 逐个提取字段（要检查是否存在、类型是否正确）
+    cJSON *ssid = cJSON_GetObjectItem(root, "ssid");
+    if (cJSON_IsString(ssid) && ssid->valuestring != NULL) {
+        strlcpy(wifi_ssid, ssid->valuestring, sizeof(wifi_ssid));
+    } else {
+        ESP_LOGW(TAG, "配置缺少 ssid，使用默认值");
+    }
+    
+    cJSON *brightness = cJSON_GetObjectItem(root, "brightness");
+    if (cJSON_IsNumber(brightness)) {
+        display_brightness = brightness->valuedouble;  // 稳妥：就算是整数也拿 double
+    }
+    
+    cJSON *offset = cJSON_GetObjectItem(root, "temp_offset");
+    if (cJSON_IsNumber(offset)) {
+        temp_calib_offset = offset->valuedouble;
+    }
+    
+    // 5. 清理
+    cJSON_Delete(root);
+    
+    ESP_LOGI(TAG, "配置已加载");
+    return ESP_OK;
+}
+```
+
+### 6.6 自定义 KEY=VALUE 格式（轻量替代方案）
+
+如果你只有 2-3 个配置项，用 JSON 反而重了。直接用 `fprintf` + `sscanf` 更简单：
+
+```c
+/* ── 写入 ── */
+void save_simple_config(void)
+{
+    FILE *f = fopen("/spiffs/config.txt", "w");
+    if (f == NULL) return;
+    
+    fprintf(f, "ssid=%s\n", wifi_ssid);
+    fprintf(f, "brightness=%d\n", display_brightness);
+    fclose(f);
+}
+
+/* ── 读取 ── */
+void load_simple_config(void)
+{
+    FILE *f = fopen("/spiffs/config.txt", "r");
+    if (f == NULL) return;
+    
+    char line[128];
+    while (fgets(line, sizeof(line), f)) {
+        char key[32], val[64];
+        if (sscanf(line, "%31[^=]=%63s", key, val) != 2) continue;
+        
+        if      (strcmp(key, "ssid")       == 0) strlcpy(wifi_ssid, val, sizeof(wifi_ssid));
+        else if (strcmp(key, "brightness") == 0) display_brightness = atoi(val);
+    }
+    fclose(f);
+}
+```
+
+**优点：** 不依赖任何库，C 标准库就够了。**缺点：** 值里不能有等号和换行。
+
+### 6.7 cJSON 初学者常犯错误
+
+| ❌ 错误 | ✅ 正确 | 为什么 |
+|---------|---------|--------|
+| `free(root)` | `cJSON_Delete(root)` | root 是 cJSON 内部结构，不是 malloc 的直接返回 |
+| 忘记 `free(json_text)` | `cJSON_Print()` 后配对 `free()` | `cJSON_Print` 内部 malloc 了，你不 free 就泄漏 |
+| 不检查 `cJSON_GetObjectItem` 返回值 | `if(cJSON_IsString(item))` 再取值 | JSON 文件可能缺少某个字段或被手动改坏 |
+| 假设 JSON 值一定是字符串 | 用 `cJSON_IsNumber` / `cJSON_IsString` 检查 | 别人可能把 `"80"` 写成字符串而不是数字 |
+| 每次写配置都 parse JSON 再 create | 读写分离，读用 parse，写用 create | parse 和 create 互为逆向，别混着用 |
+
+### 6.8 选择建议
+
+```
+只有 < 5 个简单配置项
+    └→ 用自定义 KEY=VALUE（省一个库依赖）
+
+有 5+ 个配置项或嵌套结构
+    └→ 用 cJSON（可读性好，可扩展）
+
+只有几个计数器/开关量
+    └→ 用 NVS（连 SPIFFS 都不用，API 更简单）
+```
+
+**本项目的选择：** 因为后续会有 WiFi 配置（ssid/password）、校准参数（温度偏移、传感器类型）、显示设置（亮度、翻转）等 10+ 个配置项，所以用 **cJSON**。
 
 ---
 

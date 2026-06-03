@@ -5,7 +5,16 @@
     "board/esp32s3-builtin.cfg"
   ],
   "idf.customExtraVars": {
-    "IDF_TARGET": "esp32s3"
+    "IDF_TARGET": "esp32s3",
+    "IDF_PATH": "/home/devcontainers/esp-idf"
+  },
+  "cmake.configureOnOpen": true,
+  "cmake.automaticReconfigure": true,
+  "cmake.environment": {
+    "IDF_PATH": "/home/devcontainers/esp-idf",
+    "IDF_TARGET": "esp32s3",
+    "IDF_COMPONENT_MANAGER": "0",
+    "PATH": "/home/devcontainers/.espressif/tools/xtensa-esp-elf/esp-14.2.0_20241119/xtensa-esp-elf/bin:/home/devcontainers/.espressif/python_env/idf5.5_py3.14_env/bin:${env:PATH}"
   },
   "idf.espIdfPath": "/home/devcontainers/esp-idf",
   "idf.toolsPath": "/home/devcontainers/.espressif",
