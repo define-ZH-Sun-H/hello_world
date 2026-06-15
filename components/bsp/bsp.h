@@ -11,4 +11,12 @@
 #include "sensor_init.h"
 #include "sd.h"
 
+/**
+ * @brief 一次性初始化所有板载外设
+ *
+ * 调用顺序：LED → KEY → I2C → OLED → 传感器 → RGB → 音频 → TWDT
+ * 应在 app_main 开头、任务创建之前调用。
+ */
+void bsp_init(void);
+
 #endif

@@ -70,3 +70,11 @@
 ---
 
 **这些指南生效的标志是：** diff 中不必要的修改变少，因过度复杂导致的重写变少，澄清性问题出现在实现之前而非犯错之后。
+
+---
+
+# Codegraph 使用指南
+
+**查源码路径：** `codegraph_context` → `codegraph_explore` → `Read`（最后手段）
+
+不要 `codegraph_context` 后挨个 `Read` 文件 —— `codegraph_explore` 一次调用就能返回多个文件的源码，内容和 Read 逐字节相同。Read + grep 只在索引覆盖不到时用（字符串字面量、配置文件等）。

@@ -1,4 +1,5 @@
 set(src_dirs
+            .
             iic
             key
             led
@@ -6,6 +7,7 @@ set(src_dirs
             rgb
             sd
             sensor
+            audio
             debug)
 
 set(include_dirs
@@ -17,10 +19,12 @@ set(include_dirs
             rgb
             sd
             sensor
+            audio
             debug)
 
 set(requires
             driver
-            fatfs)
+            fatfs
+            app)
 
 idf_component_register(SRC_DIRS ${src_dirs} INCLUDE_DIRS ${include_dirs} REQUIRES ${requires})

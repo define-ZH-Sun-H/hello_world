@@ -1,78 +1,49 @@
-# macOS
+# ========== 项目里存在的目录 ==========
+build/
+.claude/
+.codegraph/
+.emv2/
+.reasonix/
+.vscode/
+.devcontainer/
+docs/
+
+# ========== 项目里存在的文件 ==========
+sdkconfig
+sdkconfig.old
+dependencies.lock
+.mcp.json
+.em_skill.json
+plan.md
+pytest_hello_world.py
+_read_db.py
+tree-sitter.exe
+compile_commands.json
+
+# ========== 预防（目前没有，但以后可能出现） ==========
+managed_components/
+__pycache__/
+*.pyc
+*.pyo
+*.o
+*.a
+*.out
+*.bin
+*.elf
+*.map
+*.exe
+flasher_args.json
+
+# ========== 通用忽略（跟编辑器/系统有关） ==========
 .DS_Store
-.AppleDouble
-.LSOverride
-
-# Directory metadata
-.directory
-
-# Temporary files
+Thumbs.db
+Desktop.ini
 *~
 *.swp
 *.swo
 *.bak
 *.tmp
-
-# Log files
 *.log
 
-# Build artifacts and directories
-**/build/
-build/
-*.o
-*.a
-*.out
-*.exe # For any host-side utilities compiled on Windows
-
-# ESP-IDF specific build outputs
-*.bin
-*.elf
-*.map
-flasher_args.json # Generated in build directory
-sdkconfig.old
-sdkconfig
-
-# ESP-IDF dependencies
-# For older versions or manual component management
-/components/.idf/
-**/components/.idf/
-# For modern ESP-IDF component manager
-managed_components/
-# If ESP-IDF tools are installed/referenced locally to the project
-.espressif/
-
-# CMake generated files
-CMakeCache.txt
-CMakeFiles/
-cmake_install.cmake
-install_manifest.txt
-CTestTestfile.cmake
-
-# Python environment files
-*.pyc
-*.pyo
-*.pyd
-__pycache__/
-*.egg-info/
-dist/
-
-# Virtual environment folders
-venv/
-.venv/
-env/
-
-# Language Servers
-.clangd/
-.ccls-cache/
-compile_commands.json
-
-# Windows specific
-Thumbs.db
-ehthumbs.db
-Desktop.ini
-
-# User-specific configuration files
-*.user
-*.workspace # General workspace files, can be from various tools
-*.suo       # Visual Studio Solution User Options
-*.sln.docstates # Visual Studio
+# ========== IDE ==========
+.idea/
