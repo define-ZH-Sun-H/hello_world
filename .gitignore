@@ -1,5 +1,4 @@
 # ========== 项目里存在的目录 ==========
-build/
 .claude/
 .codegraph/
 .emv2/
@@ -7,6 +6,7 @@ build/
 .vscode/
 .devcontainer/
 docs/
+build/
 
 # ========== 项目里存在的文件 ==========
 sdkconfig
@@ -14,7 +14,6 @@ sdkconfig.old
 dependencies.lock
 .mcp.json
 .em_skill.json
-plan.md
 pytest_hello_world.py
 _read_db.py
 tree-sitter.exe
@@ -25,14 +24,6 @@ managed_components/
 __pycache__/
 *.pyc
 *.pyo
-*.o
-*.a
-*.out
-*.bin
-*.elf
-*.map
-*.exe
-flasher_args.json
 
 # ========== 通用忽略（跟编辑器/系统有关） ==========
 .DS_Store
@@ -45,5 +36,15 @@ Desktop.ini
 *.tmp
 *.log
 
-# ========== IDE ==========
+# ========== 编译产物 ==========
+*.o
+*.a
+*.out
+*.bin
+*.elf
+*.map
+*.exe
+flasher_args.json
+
+# ========== IDE（目前没用 JetBrains，以防万一） ==========
 .idea/

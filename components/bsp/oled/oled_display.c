@@ -24,13 +24,8 @@ static bool s_sleep = false;        /* 息屏状态（替换 g_disp.sleep） */
 static bool s_dirty = false;        /* 脏帧标志（替换 g_disp.dirty） */
 static char s_time_str[6] = "00:00"; /* 状态栏时间 "HH:MM" */
 
-/* 显示模式 */
-typedef enum {
-    DISP_MODE_BOOT = 0,
-    DISP_MODE_NORMAL,
-} disp_mode_t;
-
-static disp_mode_t s_display_mode = DISP_MODE_BOOT;
+/* ===== 渲染模式（render_frame 状态机） ===== */
+static render_mode_t s_render_mode = RENDER_MODE_BOOT;
 
 /* 通用 OLED 定时器 */
 static TimerHandle_t xOledTimer = NULL;
@@ -44,16 +39,13 @@ static void oled_timer_callback(TimerHandle_t xTimer)
 {
     disp_msg_t msg = { .type = DISP_MSG_NONE };
 
-    switch (s_display_mode) {
-    case DISP_MODE_BOOT:
-        s_display_mode = DISP_MODE_NORMAL;
+    if (s_render_mode == RENDER_MODE_BOOT) {
+        /* 开机计时 2s 到 → 切换到主页 */
         msg.type = DISP_MSG_SCREEN_WAKE;
         xTimerChangePeriod(xOledTimer, pdMS_TO_TICKS(60000), 0);
-        break;
-
-    case DISP_MODE_NORMAL:
+    } else {
+        /* 60s 无操作 → 息屏 */
         msg.type = DISP_MSG_SCREEN_SLEEP;
-        break;
     }
 
     if (msg.type != DISP_MSG_NONE) {
@@ -75,7 +67,7 @@ typedef void (*disp_handler_t)(const disp_msg_t *msg);
 
 static void handle_boot_screen(const disp_msg_t *m)
 {
-    s_display_mode = DISP_MODE_BOOT;
+    s_render_mode = RENDER_MODE_BOOT;
     s_dirty = true;
     xTimerChangePeriod(xOledTimer, pdMS_TO_TICKS(2000), 0);
     xTimerReset(xOledTimer, 0);
@@ -93,7 +85,13 @@ static void handle_screen_wake(const disp_msg_t *m)
     s_sleep = false;
     oled_on();
     s_dirty = true;
-    if (s_display_mode == DISP_MODE_NORMAL) {
+
+    if (s_render_mode == RENDER_MODE_BOOT) {
+        /* 开机 2s 结束，进入主页 */
+        s_render_mode = RENDER_MODE_HOME;
+        xTimerReset(xOledTimer, 0);
+    } else {
+        /* 从息屏中唤醒，复位 60s 空闲计时 */
         xTimerReset(xOledTimer, 0);
     }
 }
@@ -102,6 +100,14 @@ static void handle_key_event(const disp_msg_t *m)
 {
     menu_handle_key(m->val1, m->val2);
     s_dirty = true;
+
+    /* 按键处理后，根据 app/menu 实际状态裁决渲染模式 */
+    if (app_is_active())
+        s_render_mode = RENDER_MODE_APP;
+    else if (menu_is_active())
+        s_render_mode = RENDER_MODE_MENU;
+    else
+        s_render_mode = RENDER_MODE_HOME;
 }
 
 static void handle_set_wifi(const disp_msg_t *m)
@@ -180,24 +186,16 @@ static void render_frame(void)
         return;
     }
 
-    if (s_display_mode == DISP_MODE_BOOT) {
-        /* —— 开机画面 —— */
+    switch (s_render_mode) {
+    case RENDER_MODE_BOOT:
         oled_clear_gram();
         oled_show_string(4, 8, "Hello World", 24);
         oled_show_string(4, 36, "ESP32-S3 Dome", 12);
         oled_show_string(4, 50, "v0.0.7", 12);
         oled_refresh_gram();
+        break;
 
-    } else if (app_is_active()) {
-        /* —— App 活跃：由 app_render 自行处理全帧 —— */
-        app_render();
-
-    } else if (menu_is_active()) {
-        /* —— 菜单模式 —— */
-        menu_render();
-
-    } else {
-        /* —— 主页：状态栏 + 项目名称 —— */
+    case RENDER_MODE_HOME:
         oled_clear_gram();
 
         if (g_home.wifi_on)
@@ -206,7 +204,6 @@ static void render_frame(void)
         if (g_home.bt_on)
             oled_draw_bitmap(18, 0, 16, 16, icon_bt_on);
 
-        /* 状态栏右侧显示时间 */
         oled_show_string(96, 2, s_time_str, 12);
 
         draw_separator();
@@ -214,6 +211,15 @@ static void render_frame(void)
         oled_show_string(28, 28, "Hello World", 16);
 
         oled_refresh_gram();
+        break;
+
+    case RENDER_MODE_MENU:
+        menu_render();
+        break;
+
+    case RENDER_MODE_APP:
+        app_render();
+        break;
     }
 
     s_dirty = false;

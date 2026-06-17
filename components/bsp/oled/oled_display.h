@@ -21,6 +21,14 @@ typedef enum {
     DISP_MSG_COUNT,           /* 最后一个，用于数组大小 */
 } disp_msg_type_t;
 
+/* ===== 渲染模式（render_frame 状态机） ===== */
+typedef enum {
+    RENDER_MODE_BOOT = 0,    /* 开机画面 */
+    RENDER_MODE_HOME,        /* 主页：状态栏 + 项目名称 */
+    RENDER_MODE_MENU,        /* 菜单界面 */
+    RENDER_MODE_APP,         /* App 全屏 */
+} render_mode_t;
+
 /* 队列消息结构体 */
 typedef struct {
     disp_msg_type_t type;
