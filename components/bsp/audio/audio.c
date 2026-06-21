@@ -50,6 +50,11 @@ static i2s_chan_handle_t s_tx_handle = NULL;    /* I2S1 TX（NS4168） */
 static i2s_chan_handle_t s_rx_handle = NULL;    /* I2S0 RX（LMD2718） */
 
 static TaskHandle_t s_record_task = NULL;        /* 录音采集任务句柄 */
+
+/* 静态创建所需内存（支持按需启停，vTaskDelete 后缓冲区保留可重用） */
+static StackType_t s_audio_rec_stack[3072];
+static StaticTask_t s_audio_rec_tcb;
+
 static audio_record_cb_t s_record_cb = NULL;
 static void *s_record_ctx = NULL;
 
@@ -266,9 +271,13 @@ esp_err_t audio_record_start(audio_record_cb_t cb, void *ctx)
         return ret;
     }
 
-    BaseType_t task_ret = xTaskCreate(audio_record_task, "audio_rec", 3072,
-                                       NULL, 6, &s_record_task);
-    if (task_ret != pdPASS) {
+    TaskHandle_t h = xTaskCreateStaticPinnedToCore(audio_record_task, "audio_rec",
+        3072, NULL, 6,
+        s_audio_rec_stack, &s_audio_rec_tcb,
+        0);  /* Core 0：音频数据最终走 MQTT→网络栈 */
+    if (h != NULL) {
+        s_record_task = h;
+    } else {
         i2s_channel_disable(s_rx_handle);
         ESP_LOGE(TAG, "录音任务创建失败");
         return ESP_ERR_NO_MEM;

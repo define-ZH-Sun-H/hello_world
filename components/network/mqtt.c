@@ -32,6 +32,14 @@
 #include "sensor_init.h"
 #include "audio.h"
 
+/* ================================================================
+ * 静态创建所需内存
+ * ================================================================ */
+static StackType_t s_mqtt_time_stack[4096];
+static StaticTask_t s_mqtt_time_tcb;
+static StackType_t s_audio_test_stack[4096];
+static StaticTask_t s_audio_test_tcb;
+
 static const char *TAG = "mqtt";
 
 /* MQTT 客户端句柄（模块内部） */
@@ -398,7 +406,10 @@ static void audio_test_task(void *pv)
  */
 void mqtt_audio_test_start(void)
 {
-    xTaskCreatePinnedToCore(audio_test_task, "audio_test", 4096, NULL, 3, NULL, 0);
+    xTaskCreateStaticPinnedToCore(audio_test_task, "audio_test",
+        4096, NULL, 3,
+        s_audio_test_stack, &s_audio_test_tcb,
+        0);  /* Core 0：音频数据最终走 MQTT→网络栈 */
     ESP_LOGI(TAG, "audio_test 任务已创建");
 }
 
@@ -419,7 +430,9 @@ void mqtt_audio_test_start(void)
  */
 void mqtt_app_start(void)
 {
-    xTaskCreatePinnedToCore(mqtt_time_task, "mqtt_time",
-                            4096, NULL, 5, NULL, 0);
+    xTaskCreateStaticPinnedToCore(mqtt_time_task, "mqtt_time",
+        4096, NULL, 5,
+        s_mqtt_time_stack, &s_mqtt_time_tcb,
+        0);  /* Core 0：网络协议任务，和 WiFi 栈同核 */
     ESP_LOGI(TAG, "mqtt_time_task 已创建");
 }

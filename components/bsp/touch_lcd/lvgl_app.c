@@ -39,6 +39,10 @@
 #define PIN_NUM_CS          42
 #define PIN_NUM_TP_CS       46
 
+/* 静态创建所需内存 */
+static StackType_t s_lvgl_stack[4096];
+static StaticTask_t s_lvgl_tcb;
+
 /* 前向声明 */
 static void lvgl_task(void *arg);
 static void create_demo_ui(void);
@@ -141,7 +145,10 @@ void lvgl_app_start(void)
     /* ---------------------------------------------------------------
      * 4. 创建 LVGL 任务
      * --------------------------------------------------------------- */
-    xTaskCreate(lvgl_task, "lvgl_task", 4096, NULL, 5, NULL);
+    xTaskCreateStaticPinnedToCore(lvgl_task, "lvgl_task",
+        4096, NULL, 5,
+        s_lvgl_stack, &s_lvgl_tcb,
+        1);  /* Core 1：稳定绑定应用核，防缓存抖动 */
     printf("[LVGL] 任务已创建\n");
 }
 

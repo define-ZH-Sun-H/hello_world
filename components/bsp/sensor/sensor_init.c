@@ -107,7 +107,14 @@ void sensor_init(void)
     DBG_INFO("传感器初始化完成\n");
 }
 
+/* 静态创建所需内存 */
+static StackType_t s_sensor_stack[2560];
+static StaticTask_t s_sensor_tcb;
+
 void sensor_start(void)
 {
-    xTaskCreatePinnedToCore(sensor_task, "sensor_task", 2560, NULL, 10, NULL, 0);
+    xTaskCreateStaticPinnedToCore(sensor_task, "sensor_task",
+        2560, NULL, 10,
+        s_sensor_stack, &s_sensor_tcb,
+        1);  /* Core 1：传感器数据给 UI 展示，和应用核同核 */
 }

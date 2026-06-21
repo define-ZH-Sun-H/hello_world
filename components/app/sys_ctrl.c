@@ -85,10 +85,14 @@ static void sys_ctrl_task(void *pv)
     }
 }
 
+/* 静态创建所需内存（文件作用域） */
+static StackType_t s_sysctrl_stack[4096];
+static StaticTask_t s_sysctrl_tcb;
+
 /**
  * @brief 启动系统控制任务
  *
- * 创建 10ms 周期的 sys_ctrl_task，绑定到 core 0。
+ * 创建 10ms 周期的 sys_ctrl_task，绑定到 core 1。
  * 每个周期执行：KeyInd_Scan() → 读事件组 → 按显示状态分发。
  * 替代原来的 key_task 功能。
  *
@@ -96,5 +100,8 @@ static void sys_ctrl_task(void *pv)
  */
 void sys_ctrl_start(void)
 {
-    xTaskCreatePinnedToCore(sys_ctrl_task, "sys_ctrl", 4096, NULL, 9, NULL, 0);
+    xTaskCreateStaticPinnedToCore(sys_ctrl_task, "sys_ctrl",
+        4096, NULL, 9,
+        s_sysctrl_stack, &s_sysctrl_tcb,
+        1);  /* Core 1：和应用任务同核 */
 }

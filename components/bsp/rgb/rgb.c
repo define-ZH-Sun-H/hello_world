@@ -295,7 +295,14 @@ static void rgb_rainbow_task(void *pv)
     }
 }
 
+/* 静态创建所需内存 */
+static StackType_t s_rgb_rainbow_stack[2048];
+static StaticTask_t s_rgb_rainbow_tcb;
+
 void rgb_start_rainbow(void)
 {
-    xTaskCreatePinnedToCore(rgb_rainbow_task, "rgb_rainbow", 2048, NULL, 3, NULL, 1);
+    xTaskCreateStaticPinnedToCore(rgb_rainbow_task, "rgb_rainbow",
+        2048, NULL, 3,
+        s_rgb_rainbow_stack, &s_rgb_rainbow_tcb,
+        1);  /* Core 1：装饰任务，不干扰其他任务 */
 }
