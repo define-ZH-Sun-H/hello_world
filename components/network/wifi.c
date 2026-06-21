@@ -53,6 +53,9 @@ EventGroupHandle_t wifi_event_group = NULL;
 /* WiFi AP 列表（从 SPIFFS wifi_ap.json 加载） */
 static wifi_network_config_t s_wifi_config = {0};
 
+/* WiFi 是否已实际初始化（LwIP 栈可用） */
+static bool s_wifi_inited = false;
+
 /* ================================================================
  * WiFi AP 列表加载
  *
@@ -239,6 +242,9 @@ void wifi_init_sta(void)
     /* 加载 AP 列表（从 SPIFFS wifi_ap.json） */
     wifi_ap_list_load();
 
+    /* 无论是否有 AP，都先创建事件组，防止其他任务在 NULL 上等待 */
+    wifi_event_group = xEventGroupCreate();
+
     if (s_wifi_config.ap_count == 0) {
         ESP_LOGW(TAG, "AP 列表为空，跳过 WiFi 初始化");
         return;
@@ -277,14 +283,15 @@ void wifi_init_sta(void)
     /* ------------------------------------------------------------
      * 3. 注册事件处理器
      *
-     * 创建事件组用于通知连接状态，注册两个事件回调：
+     * 事件组已在函数开头创建。
+     * 注册两个事件回调：
      *   - WIFI_EVENT: 物理层事件（启动/连接/断开）
      *   - IP_EVENT:   网络层事件（获取 IP/丢失 IP）
      *
      * 注意：回调函数中不要做阻塞操作（延时、HTTP 请求等）。
      * 耗时操作应通过事件组通知其他任务处理。
      * ------------------------------------------------------------ */
-    wifi_event_group = xEventGroupCreate();
+    s_wifi_inited = true;
     esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID,
                                &wifi_event_handler, NULL);
     esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP,
@@ -321,4 +328,9 @@ void wifi_init_sta(void)
     ESP_ERROR_CHECK(esp_wifi_start());
 
     ESP_LOGI(TAG, "初始化完成，等待连接...");
+}
+
+bool wifi_is_initialized(void)
+{
+    return s_wifi_inited;
 }

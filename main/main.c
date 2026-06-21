@@ -12,6 +12,7 @@
 #include "system.h"
 #include "network.h"
 #include "app.h"
+#include "ota.h"        /* OTA 定时检查 */
 
 void app_main(void)
 {
@@ -31,6 +32,11 @@ void app_main(void)
      * Phase 3 — 网络栈初始化（WiFi → MQTT → SNTP，全部非阻塞）
      * ================================================================ */
     network_init();                 /* 加载 AP 列表 → 连接 WiFi → MQTT → SNTP */
+
+    /* ================================================================
+     * Phase 3.5 — 启动 OTA 定时检查（依赖 WiFi，放在 network_init 之后）
+     * ================================================================ */
+    ota_periodic_check_start();
 
     /* ================================================================
      * Phase 4 — 创建所有 FreeRTOS 任务

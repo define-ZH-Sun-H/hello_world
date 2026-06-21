@@ -88,6 +88,14 @@ extern EventGroupHandle_t wifi_event_group;
  */
 void wifi_init_sta(void);
 
+/**
+ * @brief 检查 WiFi 是否已实际初始化（是否有 AP 列表）
+ *
+ * @return true  WiFi 已初始化（LwIP 栈可用）
+ * @return false WiFi 被跳过（无 AP 配置）
+ */
+bool wifi_is_initialized(void);
+
 #ifdef __cplusplus
 }
 #endif

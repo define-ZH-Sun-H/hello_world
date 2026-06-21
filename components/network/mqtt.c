@@ -31,6 +31,7 @@
 #include "sntp.h"
 #include "sensor_init.h"
 #include "audio.h"
+#include "ota.h"
 
 /* ================================================================
  * 静态创建所需内存
@@ -82,6 +83,13 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
         ESP_LOGI(TAG, "收到: %.*s = %.*s",
                  event->topic_len, event->topic,
                  event->data_len, event->data);
+
+        /* OTA 升级触发 */
+        if (event->topic_len == 16
+            && memcmp(event->topic, "cmd/esp32s3/ota", 16) == 0) {
+            ESP_LOGI(TAG, "收到 OTA 指令，开始升级");
+            ota_start();
+        }
         break;
 
     case MQTT_EVENT_ERROR:
@@ -167,11 +175,16 @@ static esp_mqtt_client_handle_t mqtt_client_startup(void)
 static void mqtt_time_task(void *pv)
 {
     /* ------------------------------------------------------------
-     * 第 1 步：等待 WiFi 获取 IP
+     * 第 1 步：等待 WiFi 获取 IP（最多等 15 秒，无 WiFi 则跳过）
      * ------------------------------------------------------------ */
     ESP_LOGI(TAG, "等待 WiFi 连接...");
-    xEventGroupWaitBits(wifi_event_group, WIFI_CONNECTED_BIT,
-                        pdFALSE, pdTRUE, portMAX_DELAY);
+    EventBits_t bits = xEventGroupWaitBits(wifi_event_group, WIFI_CONNECTED_BIT,
+                                           pdFALSE, pdTRUE, pdMS_TO_TICKS(15000));
+    if (!(bits & WIFI_CONNECTED_BIT)) {
+        ESP_LOGW(TAG, "WiFi 未就绪，跳过 MQTT 连接");
+        vTaskDelete(NULL);
+        return;
+    }
     ESP_LOGI(TAG, "WiFi 已连接，启动 MQTT");
 
     /* ------------------------------------------------------------

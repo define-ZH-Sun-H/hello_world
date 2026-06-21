@@ -48,3 +48,6 @@ flasher_args.json
 
 # ========== IDE（目前没用 JetBrains，以防万一） ==========
 .idea/
+
+# ========== 会话记录 ==========
+session-logs/
