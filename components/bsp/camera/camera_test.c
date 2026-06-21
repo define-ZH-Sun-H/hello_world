@@ -28,6 +28,14 @@ static const char *TAG = "camera";
 
 static bool s_camera_inited = false;
 
+/**
+ * @brief 初始化 OV2640 摄像头
+ *
+ * 配置引脚映射、时钟、像素格式（JPEG QVGA 320x240）。
+ * 初始化成功后可反复调用（幂等），第二次调用直接返回 ESP_OK。
+ *
+ * @return ESP_OK 成功，否则错误码
+ */
 esp_err_t camera_test_init(void)
 {
     if (s_camera_inited) {
@@ -84,6 +92,16 @@ esp_err_t camera_test_init(void)
     return ESP_OK;
 }
 
+/**
+ * @brief 拍摄一张照片并可选保存到文件
+ *
+ * 获取一帧 JPEG 图像数据，如果提供了 save_path 则写入文件。
+ * 调用前必须已执行 camera_test_init()。
+ *
+ * @param save_path 保存路径（传 NULL 或空字符串则不保存）
+ *
+ * @return ESP_OK 成功，ESP_ERR_INVALID_STATE 摄像头未初始化，ESP_FAIL 获取帧失败
+ */
 esp_err_t camera_test_capture(const char *save_path)
 {
     if (!s_camera_inited) {

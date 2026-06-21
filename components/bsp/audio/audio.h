@@ -38,7 +38,7 @@ typedef void (*audio_record_cb_t)(const int16_t *pcm, size_t samples, void *user
  * @brief 初始化音频模块
  *
  * 依次初始化 I2S1 (NS4168 TX) 和 I2S0 (LMD2718 RX)。
- * 初始化成功后播放一段 1kHz/0.5s 自检音。
+ * 初始化后不自动发声（自检音已屏蔽）。
  *
  * @return ESP_OK 成功，否则失败
  */

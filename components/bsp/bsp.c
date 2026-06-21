@@ -10,6 +10,7 @@
 #include "iic.h"
 #include "rgb.h"
 #include "audio.h"
+#include "touch_lcd_init.h"
 #include "esp_task_wdt.h"
 
 /* ================================================================
@@ -33,19 +34,18 @@ static void wdt_initial(void)
  * 公开接口 — 硬件初始化
  *
  * 调用顺序按外设启动依赖排列：
- *   LED → KEY → I2C → OLED → 传感器 → RGB → 音频 → WDT
+ *   LED → KEY → I2C → [OLED → 已替换为 TFT LCD] → 传感器 → RGB → 音频 → SD → TFT LCD → WDT
  * ================================================================ */
 
 void bsp_init(void)
 {
-    i2c_obj_t oled_dev;
-
     led_init();                                 /* LED GPIO */
     key_init();                                 /* 按键 GPIO + ISR */
-    oled_dev = iic_init(I2C_NUM_1);             /* I2C 总线 */
-    oled_init(oled_dev);                        /* OLED 控制器 */
+    /* OLED 已替换为 TFT LCD，I2C 总线无需在此初始化 */
     sensor_init();                              /* DS18B20 + DHT11 */
     rgb_init();                                 /* WS2812 RMT */
     audio_init();                               /* LMD2718 + NS4168 (I2S) */
+    sd_spi_init();                              /* SD 卡（SPI 模式，无卡不阻塞） */
+    touch_lcd_init();                           /* 触控彩屏：引脚 + SPI 总线初始化（面板初始化在 lvgl_app_start） */
     wdt_initial();                              /* TWDT 15s */
 }

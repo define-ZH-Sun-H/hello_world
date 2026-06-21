@@ -106,3 +106,8 @@ void sensor_init(void)
 
     DBG_INFO("传感器初始化完成\n");
 }
+
+void sensor_start(void)
+{
+    xTaskCreatePinnedToCore(sensor_task, "sensor_task", 2560, NULL, 10, NULL, 0);
+}

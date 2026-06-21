@@ -229,8 +229,8 @@ esp_err_t audio_init(void)
 
     ESP_LOGI(TAG, "音频模块初始化完成");
 
-    /* 播放自检音确认功放工作 */
-    audio_self_test();
+    /* （已屏蔽）播放自检音确认功放工作 */
+    //audio_self_test();
 
     return ESP_OK;
 }

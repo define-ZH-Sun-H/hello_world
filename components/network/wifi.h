@@ -32,6 +32,25 @@ extern "C" {
  * ================================================================ */
 #define WIFI_CONNECTED_BIT      BIT0
 
+/* ================================================================
+ * WiFi AP 列表配置
+ *
+ * 从 SPIFFS /spiffs/wifi_ap.json 加载，支持最多 5 个 AP。
+ * JSON 格式：[{"ssid":"...", "pswd":"...", "prio":N}]
+ * ================================================================ */
+#define WIFI_AP_LIST_MAX  5
+
+typedef struct {
+    char     ssid[32];
+    char     password[64];
+    uint8_t  priority;      /* 0-255，预留排序用 */
+} wifi_ap_entry_t;
+
+typedef struct {
+    wifi_ap_entry_t ap_list[WIFI_AP_LIST_MAX];
+    uint8_t         ap_count;   /* 0 = 跳过 WiFi */
+} wifi_network_config_t;
+
 /**
  * @brief WiFi 状态事件组（全局可见）
  *
@@ -49,6 +68,7 @@ extern "C" {
  */
 extern EventGroupHandle_t wifi_event_group;
 
+
 /**
  * @brief 初始化并连接 WiFi Station
  *
@@ -63,6 +83,8 @@ extern EventGroupHandle_t wifi_event_group;
  *
  * 调用后，WiFi 会在后台自动连接和重连，无需额外处理。
  * 通过 wifi_event_group 获知连接状态。
+ *
+ * @return void
  */
 void wifi_init_sta(void);
 

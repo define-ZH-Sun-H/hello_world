@@ -1,8 +1,15 @@
 #include "storage_init.h"
 #include "esp_spiffs.h"
 #include "debug.h"
-#include "sd.h"
 
+/**
+ * @brief 挂载 SPIFFS 文件系统（storage 分区）
+ *
+ * 挂载点 /spiffs，用于存储 WiFi/MQTT 配置、用户设置、传感器校准数据。
+ * 挂载失败时自动格式化（首次启动 / 崩溃后自救）。
+ *
+ * @return ESP_OK 成功，否则错误码
+ */
 esp_err_t storage_spiffs_init(void)
 {
     esp_vfs_spiffs_conf_t conf = {
@@ -25,21 +32,4 @@ esp_err_t storage_spiffs_init(void)
     return ret;
 }
 
-void storage_sd_init(void)
-{
-    esp_err_t sd_ret = sd_spi_init();
-    if (sd_ret == ESP_OK) {
-        size_t total = 0, free = 0;
-        sd_get_fatfs_usage(&total, &free);
-        DBG_INFO("SD 卡挂载成功: %s, 总 %d MB, 可用 %d MB\n",
-                 SD_MOUNT_POINT, (int)(total / (1024*1024)), (int)(free / (1024*1024)));
-    } else {
-        DBG_WARN("SD 卡挂载失败: %s（无卡不影响运行）\n", esp_err_to_name(sd_ret));
-    }
-}
 
-void storage_init_all(void)
-{
-    storage_spiffs_init();
-    storage_sd_init();
-}

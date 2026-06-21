@@ -280,3 +280,22 @@ void rgb_set_brightness(uint8_t percent)
     if (percent > 100) percent = 100;
     brightness = percent;
 }
+
+/* ================================================================
+ * 彩虹灯任务
+ * ================================================================ */
+
+static void rgb_rainbow_task(void *pv)
+{
+    uint16_t hue = 0;
+    while (1) {
+        rgb_set_hsv(hue, 100, 100);
+        hue = (hue + 1) % 360;
+        vTaskDelay(pdMS_TO_TICKS(20));
+    }
+}
+
+void rgb_start_rainbow(void)
+{
+    xTaskCreatePinnedToCore(rgb_rainbow_task, "rgb_rainbow", 2048, NULL, 3, NULL, 1);
+}

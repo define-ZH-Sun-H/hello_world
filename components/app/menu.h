@@ -65,11 +65,15 @@ typedef struct {
  *
  * 必须在 menu_init() 之前调用。
  * 自动处理 NVS 分区损坏/版本变更（擦除后重试）。
+ *
+ * @return void
  */
 void nvs_init(void);
 
 /**
  * @brief 初始化菜单系统（注册菜单页表、加载 NVS 设置）
+ *
+ * @return void
  */
 void menu_init(void);
 
@@ -98,16 +102,28 @@ bool menu_is_active(void);
 
 /**
  * @brief 渲染菜单到 OLED 缓冲区（由 display_task 调用）
+ *
+ * @return void
  */
 void menu_render(void);
 
 /**
  * @brief 持久化 TOGGLE 值到 NVS
+ *
+ * @param nvs_key NVS key 名称
+ * @param value   true=开，false=关
+ *
+ * @return void
  */
 void menu_save_toggle(const char *nvs_key, bool value);
 
 /**
  * @brief 从 NVS 读取 TOGGLE 值
+ *
+ * @param nvs_key     NVS key 名称
+ * @param default_val 默认值（首次启动或读取失败时返回此值）
+ *
+ * @return true=开，false=关
  */
 bool menu_load_toggle(const char *nvs_key, bool default_val);
 

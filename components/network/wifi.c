@@ -25,6 +25,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
 #include "esp_wifi.h"
@@ -32,6 +33,7 @@
 #include "esp_netif.h"
 #include "nvs_flash.h"
 #include "esp_log.h"
+#include "cJSON.h"
 
 #include "wifi.h"
 
@@ -47,6 +49,83 @@ static const char *TAG = "wifi";
  * 实现放在此文件中。其他文件通过 include "wifi.h" 访问。
  * ================================================================ */
 EventGroupHandle_t wifi_event_group = NULL;
+
+/* WiFi AP 列表（从 SPIFFS wifi_ap.json 加载） */
+static wifi_network_config_t s_wifi_config = {0};
+
+/* ================================================================
+ * WiFi AP 列表加载
+ *
+ * 从 SPIFFS 读取 wifi_ap.json，解析到 s_wifi_config.ap_list[]。
+ * 文件不存在 / 解析失败 → ap_count = 0。
+ * ssid 必填，缺了跳过该项；pswd 和 prio 可选。
+ * ================================================================ */
+/**
+ * @brief 从 SPIFFS 加载 WiFi AP 列表
+ *
+ * @return ESP_OK 成功，ESP_ERR_NOT_FOUND 文件不存在，
+ *         ESP_ERR_INVALID_ARG 解析失败
+ */
+static esp_err_t wifi_ap_list_load(void)
+{
+    FILE *f = fopen("/spiffs/wifi_ap.json", "r");
+    if (!f) {
+        ESP_LOGW(TAG, "wifi_ap.json 不存在，跳过 WiFi");
+        return ESP_ERR_NOT_FOUND;
+    }
+
+    fseek(f, 0, SEEK_END);
+    long len = ftell(f);
+    fseek(f, 0, SEEK_SET);
+
+    char *json = malloc(len + 1);
+    if (!json) {
+        fclose(f);
+        return ESP_ERR_NO_MEM;
+    }
+    fread(json, 1, len, f);
+    fclose(f);
+    json[len] = '\0';
+
+    cJSON *root = cJSON_Parse(json);
+    if (!root || !cJSON_IsArray(root)) {
+        ESP_LOGW(TAG, "wifi_ap.json 解析失败");
+        free(json);
+        cJSON_Delete(root);
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    s_wifi_config.ap_count = 0;
+    int n = cJSON_GetArraySize(root);
+    for (int i = 0; i < n && i < WIFI_AP_LIST_MAX; i++) {
+        cJSON *item = cJSON_GetArrayItem(root, i);
+        cJSON *ssid = cJSON_GetObjectItem(item, "ssid");
+        cJSON *pswd = cJSON_GetObjectItem(item, "pswd");
+        cJSON *prio = cJSON_GetObjectItem(item, "prio");
+
+        if (!cJSON_IsString(ssid)) continue;
+
+        wifi_ap_entry_t *ap = &s_wifi_config.ap_list[s_wifi_config.ap_count];
+        strncpy(ap->ssid, ssid->valuestring, sizeof(ap->ssid) - 1);
+        ap->ssid[sizeof(ap->ssid) - 1] = '\0';
+
+        if (cJSON_IsString(pswd)) {
+            strncpy(ap->password, pswd->valuestring, sizeof(ap->password) - 1);
+            ap->password[sizeof(ap->password) - 1] = '\0';
+        } else {
+            ap->password[0] = '\0';     /* 开放网络 */
+        }
+
+        ap->priority = cJSON_IsNumber(prio) ? (uint8_t)prio->valueint : 0;
+        s_wifi_config.ap_count++;
+    }
+
+    cJSON_Delete(root);
+    free(json);
+
+    ESP_LOGI(TAG, "已加载 %d 个 WiFi AP", s_wifi_config.ap_count);
+    return ESP_OK;
+}
 
 /* ================================================================
  * 事件回调函数（模块内部使用，不对外暴露）
@@ -70,6 +149,20 @@ EventGroupHandle_t wifi_event_group = NULL;
  *           202 = AUTH_FAIL（密码错误）
  *           204 = HANDSHAKE_TIMEOUT（DHCP 超时）
  * ================================================================ */
+/**
+ * @brief WiFi 事件回调
+ *
+ * 响应 WiFi 驱动和 LwIP 协议栈产生的事件，驱动连接状态机。
+ * 处理的事件：STA_START（发起连接）、STA_CONNECTED（关联成功）、
+ * STA_DISCONNECTED（清理标记+自动重连）、GOT_IP（置位就绪标记）。
+ *
+ * @note 回调中不要做阻塞操作，耗时操作应通过事件组通知其他任务处理。
+ *
+ * @param arg        用户自定义参数（未使用）
+ * @param base       事件基类（WIFI_EVENT 或 IP_EVENT）
+ * @param event_id   事件 ID
+ * @param event_data 事件数据结构体指针
+ */
 static void wifi_event_handler(void *arg, esp_event_base_t base,
                                 int32_t event_id, void *event_data)
 {
@@ -126,31 +219,38 @@ static void wifi_event_handler(void *arg, esp_event_base_t base,
  * @note 必须在 WiFi 相关的无线通信开始前调用。
  * @note 如果 NVS 分区格式不匹配，会自动擦除重试。
  * ================================================================ */
+/**
+ * @brief 初始化并连接 WiFi Station
+ *
+ * 完整的初始化流程：
+ * 1. NVS 初始化（WiFi 驱动内部存储）
+ * 2. 网络接口层（esp_netif）+ 事件循环
+ * 3. WiFi 驱动初始化 + 事件处理注册
+ * 4. 配置路由器 SSID/密码
+ * 5. 启动 WiFi（连接由事件回调自动驱动）
+ *
+ * 调用后 WiFi 在后台自动连接和重连，无需额外处理。
+ * 其他任务通过 wifi_event_group 获知连接状态。
+ *
+ * @return void
+ */
 void wifi_init_sta(void)
 {
-    ESP_LOGI(TAG, "初始化 WiFi Station...");
+    /* 加载 AP 列表（从 SPIFFS wifi_ap.json） */
+    wifi_ap_list_load();
 
-    /* ------------------------------------------------------------
-     * 1. NVS 初始化
-     *
-     * WiFi 驱动需要在 NVS（非易失性存储）中保存运行时参数，
-     * 如上次连接的 AP 的 MAC 地址、校准数据等。
-     * 必须在 esp_wifi_init() 之前调用。
-     *
-     * 开发过程中多次烧录可能导致 NVS 分区布局变化，
-     * 首次失败时自动擦除重试。
-     * ------------------------------------------------------------ */
-    esp_err_t ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        ESP_LOGW(TAG, "NVS 分区需要擦除，正在重试...");
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        ret = nvs_flash_init();
+    if (s_wifi_config.ap_count == 0) {
+        ESP_LOGW(TAG, "AP 列表为空，跳过 WiFi 初始化");
+        return;
     }
-    ESP_ERROR_CHECK(ret);
-    ESP_LOGI(TAG, "NVS 初始化完成");
+
+    ESP_LOGI(TAG, "初始化 WiFi Station (SSID: %s)...",
+             s_wifi_config.ap_list[0].ssid);
 
     /* ------------------------------------------------------------
-     * 2. 初始化网络接口层
+     * 1. 初始化网络接口层
+     *
+     * NVS 已由 system_init() 统一初始化，此处不再重复。
      *
      * esp_netif_init()      — 启动 LwIP 协议栈
      * esp_event_loop_create_default() — 创建事件分发任务
@@ -165,7 +265,7 @@ void wifi_init_sta(void)
     ESP_LOGI(TAG, "网络接口层初始化完成");
 
     /* ------------------------------------------------------------
-     * 3. WiFi 驱动初始化
+     * 2. WiFi 驱动初始化
      *
      * 使用 WIFI_INIT_CONFIG_DEFAULT() 宏获取默认配置，
      * 包括缓冲区大小、并发连接数等。无需修改。
@@ -175,7 +275,7 @@ void wifi_init_sta(void)
     ESP_LOGI(TAG, "WiFi 驱动初始化完成");
 
     /* ------------------------------------------------------------
-     * 4. 注册事件处理器
+     * 3. 注册事件处理器
      *
      * 创建事件组用于通知连接状态，注册两个事件回调：
      *   - WIFI_EVENT: 物理层事件（启动/连接/断开）
@@ -192,24 +292,28 @@ void wifi_init_sta(void)
     ESP_LOGI(TAG, "事件处理器注册完成");
 
     /* ------------------------------------------------------------
-     * 5. 配置目标路由器
+     * 4. 配置 AP（从 SPIFFS 加载的 AP 列表，取第一个）
      *
-     * 设置 STA 模式、指定 SSID 和密码。
-     * 必须在 esp_wifi_start() 之前调用。
+     * 后续版本可循环尝试列表中多个 AP，或按 priority / RSSI 排序。
      * ------------------------------------------------------------ */
-    wifi_config_t wifi_config = {
+    wifi_config_t wifi_cfg = {
         .sta = {
-            .ssid = "Redmi K70E",
-            .password = "s13523061092",
             .threshold.authmode = WIFI_AUTH_WPA2_PSK,
         },
     };
+    strncpy((char *)wifi_cfg.sta.ssid,
+            s_wifi_config.ap_list[0].ssid,
+            sizeof(wifi_cfg.sta.ssid) - 1);
+    strncpy((char *)wifi_cfg.sta.password,
+            s_wifi_config.ap_list[0].password,
+            sizeof(wifi_cfg.sta.password) - 1);
+
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
-    ESP_LOGI(TAG, "路由器配置完成 (SSID: %s)", wifi_config.sta.ssid);
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_cfg));
+    ESP_LOGI(TAG, "路由器配置完成 (SSID: %s)", wifi_cfg.sta.ssid);
 
     /* ------------------------------------------------------------
-     * 6. 启动 WiFi
+     * 5. 启动 WiFi
      *
      * 启动后，事件回调驱动后续流程：
      *   START → esp_wifi_connect() → CONNECTED → GOT_IP

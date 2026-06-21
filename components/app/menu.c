@@ -139,6 +139,15 @@ static const menu_page_t s_menu_pages[MENU_PAGE_COUNT] = {
  * 调用处都需要检查返回值。
  * ============================================================ */
 
+/**
+ * @brief 按页 ID 获取页描述符
+ *
+ * menu_page_id_t 枚举值直接作为数组索引查表。
+ *
+ * @param page 页 ID
+ *
+ * @return 页描述符指针，越界返回 NULL
+ */
 static const menu_page_t *get_page(menu_page_id_t page)
 {
     if ((uint8_t)page < MENU_PAGE_COUNT)
@@ -161,6 +170,17 @@ static const menu_page_t *get_page(menu_page_id_t page)
  * 但 NVS 操作走到 Flash cache 层，对 50Hz 帧率来说可以接受。
  * ============================================================ */
 
+/**
+ * @brief 持久化 TOGGLE 菜单项的值到 NVS
+ *
+ * 将开关值写入 "menu" 命名空间。
+ * 每次写操作都完整 open → set → commit → close。
+ *
+ * @param nvs_key NVS key 名称
+ * @param value   true=开，false=关
+ *
+ * @return void
+ */
 void menu_save_toggle(const char *nvs_key, bool value)
 {
     nvs_handle_t handle;
@@ -174,6 +194,17 @@ void menu_save_toggle(const char *nvs_key, bool value)
     nvs_close(handle);
 }
 
+/**
+ * @brief 从 NVS 读取 TOGGLE 菜单项的值
+ *
+ * 从 "menu" 命名空间读取开关值。
+ * 读取失败（首次启动/NVS 被擦除）时返回 default_val。
+ *
+ * @param nvs_key     NVS key 名称
+ * @param default_val 默认值（首次启动或读取失败时返回此值）
+ *
+ * @return true=开，false=关
+ */
 bool menu_load_toggle(const char *nvs_key, bool default_val)
 {
     nvs_handle_t handle;
@@ -207,6 +238,14 @@ bool menu_load_toggle(const char *nvs_key, bool default_val)
  * 目前菜单只有两层（主菜单→子页），远未达到上限。
  * ============================================================ */
 
+/**
+ * @brief 压栈导航：进入新页面
+ *
+ * 将当前页面 ID 压入历史栈，然后跳转到目标页并选中第一行。
+ * 栈满时静默丢弃最旧记录。
+ *
+ * @param page 目标页 ID
+ */
 static void nav_push(menu_page_id_t page)
 {
     /* 将当前页压栈保存 */
@@ -219,6 +258,12 @@ static void nav_push(menu_page_id_t page)
     s_menu_state.selected_index = 0;
 }
 
+/**
+ * @brief 弹栈导航：返回上一页
+ *
+ * 从历史栈弹出最近一次进入的页并跳转。
+ * 如果栈已空（已经在首页），则退出菜单模式。
+ */
 static void nav_pop(void)
 {
     if (s_menu_state.history_depth > 0) {
@@ -257,6 +302,13 @@ static void nav_pop(void)
  * @note 调用了 NVS 读写，不要在 ISR 中调用。
  * ============================================================ */
 
+/**
+ * @brief 激活当前选中的菜单项（K3 确认键触发）
+ *
+ * TOGGLE 项：读 NVS → 取反 → 写回 NVS → 同步到系统全局变量
+ * ACTION 项：导航到子页面
+ * INFO 项：无操作
+ */
 static void menu_activate_current_item(void)
 {
     const menu_page_t *page = get_page(s_menu_state.current_page);
@@ -336,6 +388,17 @@ static void menu_activate_current_item(void)
  * @return true=事件已被消费，false=未被消费（外部仍可处理）
  * ============================================================ */
 
+/**
+ * @brief 按键事件分发处理（菜单核心交互引擎）
+ *
+ * 非菜单模式：K1-K4 短按进入对应菜单页，返回 false 让外部继续处理
+ * 菜单模式：消费所有按键事件，执行导航/开关/返回
+ *
+ * @param key_id 按键编号 0-3
+ * @param event  按键事件类型
+ *
+ * @return true 事件已消费，false 未被消费（外部仍可处理）
+ */
 bool menu_handle_key(uint8_t key_id, int event)
 {
     /* ---- 非菜单模式：K1-K4 短按进入对应页面 ---- */
@@ -441,7 +504,15 @@ bool menu_handle_key(uint8_t key_id, int event)
 
 /**
  * @brief 在 GRAM 中填充矩形区域（不触发 I2C refresh）
- * @note  与 oled_fill() 不同，此函数只写缓冲区，配合全局 refresh。
+ *
+ * 直接操作 OLED GRAM 缓冲区，将指定矩形内所有像素设为 dot 值。
+ * 与 oled_fill() 不同，此函数只写缓冲区，配合全局 refresh。
+ *
+ * @param x1  左上角 X 坐标（0-127）
+ * @param y1  左上角 Y 坐标（0-63）
+ * @param x2  右下角 X 坐标（0-127）
+ * @param y2  右下角 Y 坐标（0-63）
+ * @param dot 像素值（0=灭，1=亮）
  */
 static void fill_gram(uint8_t x1, uint8_t y1, uint8_t x2, uint8_t y2, uint8_t dot)
 {
@@ -450,6 +521,17 @@ static void fill_gram(uint8_t x1, uint8_t y1, uint8_t x2, uint8_t y2, uint8_t do
             oled_draw_point(x, y, dot);
 }
 
+/**
+ * @brief 渲染当前菜单页到 OLED 屏幕
+ *
+ * 每次调用执行完整流程：清 GRAM → 绘制标题栏/分隔线/列表项 → 刷新屏幕。
+ * 支持滚动显示（选中项进入第 3 行后窗口跟随下移）和 TOGGLE 项的 ON/OFF 标签。
+ *
+ * @note 本函数直接调 oled_clear_gram + oled_refresh_gram，
+ *       绕过了 display_task 的 dirty 标志判断。
+ *
+ * @return void
+ */
 void menu_render(void)
 {
     const menu_page_t *page = get_page(s_menu_state.current_page);
@@ -533,6 +615,14 @@ void menu_render(void)
  *       显示任务（display_task）在 app_main Phase 3 中创建。
  * ============================================================ */
 
+/**
+ * @brief 初始化 NVS 闪存存储
+ *
+ * 自动处理 NVS 分区损坏/版本变更（擦除后重试）。
+ * 必须在 menu_init() 之前调用。
+ *
+ * @return void
+ */
 void nvs_init(void)
 {
     esp_err_t ret = nvs_flash_init();
@@ -544,6 +634,17 @@ void nvs_init(void)
     DBG_INFO("NVS 初始化成功\n");
 }
 
+/**
+ * @brief 初始化菜单系统
+ *
+ * 从 NVS 加载 TOGGLE 项的断电恢复值到 g_disp，清零菜单状态，
+ * 设置默认值（menu_active = false, current_page = HOME），
+ * 标记 dirty 触发首帧显示。
+ *
+ * @note 不创建任何队列/任务/信号量，纯数据初始化。
+ *
+ * @return void
+ */
 void menu_init(void)
 {
     oled_display_set_wifi(menu_load_toggle("menu_wifi_on", true));
@@ -572,12 +673,22 @@ void menu_init(void)
  *   当前页面的菜单项数量，供外部计算显示布局用（目前未被调用）。
  * ============================================================ */
 
+/**
+ * @brief 获取当前菜单页的项数
+ *
+ * @return 菜单项数量，当前页无效时返回 0
+ */
 uint8_t menu_get_current_page_count(void)
 {
     const menu_page_t *page = get_page(s_menu_state.current_page);
     return page ? page->count : 0;
 }
 
+/**
+ * @brief 查询菜单当前是否激活
+ *
+ * @return true 菜单模式，false 正常显示
+ */
 bool menu_is_active(void)
 {
     return s_menu_state.menu_active;

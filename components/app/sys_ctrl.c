@@ -27,12 +27,7 @@
 
 #include "key.h"
 #include "app.h"
-#include "menu.h"
-#include "oled_display.h"
 #include "rgb.h"
-
-/* ---- 组合键防重复触发 ---- */
-static bool s_combo_handled = false;
 
 /**
  * @brief 系统控制任务（10ms 周期）
@@ -43,6 +38,10 @@ static bool s_combo_handled = false;
  *   3. 按当前显示状态分发
  *   4. 清空事件组
  *   5. vTaskDelay 10ms
+ *
+ * @param pv 未使用
+ *
+ * @return void
  */
 static void sys_ctrl_task(void *pv)
 {
@@ -66,16 +65,7 @@ static void sys_ctrl_task(void *pv)
         /* ③ 预先清空事件组（只清本次读取的位，防止并发写入丢失） */
         xEventGroupClearBits(key_event_group, bits);
 
-        /* ④ 息屏唤醒检测：息屏状态下任何按键仅唤醒屏幕，不触发功能 */
-        if (oled_display_is_sleeping()) {
-            disp_msg_t m = { .type = DISP_MSG_SCREEN_WAKE };
-            xQueueSend(disp_queue, &m, 0);
-            vTaskDelay(pdMS_TO_TICKS(10));
-            esp_task_wdt_reset();
-            continue;
-        }
-
-        /* ⑤ 按显示状态分发 */
+        /* ④ 按显示状态分发 */
 
         if (app_is_active()) {
             /* —— App 模式：所有按键路由到当前 app —— */
@@ -87,52 +77,24 @@ static void sys_ctrl_task(void *pv)
                     app_handle_key(i, KEY_IND_EVENT_LONG_PRESS);
                 }
             }
-
-        } else if (menu_is_active()) {
-            /* —— 菜单模式：按键消息发送到 disp_queue —— */
-            for (i = 0; i < KEY_IND_COUNT; i++) {
-                if (bits & (1 << i)) {
-                    disp_msg_t m = { .type = DISP_MSG_KEY_EVENT, .val1 = i, .val2 = KEY_IND_EVENT_PRESS };
-                    xQueueSend(disp_queue, &m, 0);
-                }
-                if (bits & (1 << (i + 4))) {
-                    disp_msg_t m = { .type = DISP_MSG_KEY_EVENT, .val1 = i, .val2 = KEY_IND_EVENT_LONG_PRESS };
-                    xQueueSend(disp_queue, &m, 0);
-                }
-            }
-
-        } else {
-            /* —— 主页 / 开机画面模式：系统操作 —— */
-
-            /* K1-K4 短按 → 发送 KEY_EVENT，由 display_task 内 menu_handle_key 处理进入菜单 */
-            for (i = 0; i < KEY_IND_COUNT; i++) {
-                if (bits & (1 << i)) {
-                    disp_msg_t m = { .type = DISP_MSG_KEY_EVENT, .val1 = i, .val2 = KEY_IND_EVENT_PRESS };
-                    xQueueSend(disp_queue, &m, 0);
-                }
-            }
-
-            /* K1 + K2 组合键 → 关闭 RGB */
-            {
-                bool k1_pressed = (gpio_get_level(KEY1_GPIO_PIN) == 0);
-                bool k2_pressed = (gpio_get_level(KEY2_GPIO_PIN) == 0);
-                if (k1_pressed && k2_pressed) {
-                    if (!s_combo_handled) {
-                        rgb_clear();
-                        s_combo_handled = true;
-                    }
-                } else {
-                    s_combo_handled = false;
-                }
-            }
         }
+        /* 非 App 模式：按键由 LVGL 输入驱动直接处理 */
 
         vTaskDelay(pdMS_TO_TICKS(10));
         esp_task_wdt_reset();
     }
 }
 
-void sys_ctrl_init(void)
+/**
+ * @brief 启动系统控制任务
+ *
+ * 创建 10ms 周期的 sys_ctrl_task，绑定到 core 0。
+ * 每个周期执行：KeyInd_Scan() → 读事件组 → 按显示状态分发。
+ * 替代原来的 key_task 功能。
+ *
+ * @return void
+ */
+void sys_ctrl_start(void)
 {
     xTaskCreatePinnedToCore(sys_ctrl_task, "sys_ctrl", 4096, NULL, 9, NULL, 0);
 }

@@ -259,6 +259,11 @@ void oled_display_init(void)
     }
 }
 
+void oled_display_start(void)
+{
+    xTaskCreatePinnedToCore(display_task, "oled_disp", 3072, NULL, 8, NULL, 1);
+}
+
 /* ========== Setter API ========== */
 
 void oled_display_set_wifi(bool on)

@@ -48,8 +48,16 @@ typedef struct {
 extern home_state_t g_home;             /* 主页状态（menu.c 写入） */
 extern QueueHandle_t disp_queue;        /* 显示消息队列 */
 
-/* 初始化显示系统 */
+/* 初始化显示系统（创建队列、定时器等） */
 void oled_display_init(void);
+
+/**
+ * @brief 启动显示刷新任务
+ *
+ * 创建 display_task，50Hz 刷新率，core 1，优先级 8。
+ * 必须在 oled_display_init 之后调用。
+ */
+void oled_display_start(void);
 
 /* 显示任务函数（50Hz 刷新），由 app_main 统一创建 */
 void display_task(void *pv);

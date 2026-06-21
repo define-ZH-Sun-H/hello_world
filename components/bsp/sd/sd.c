@@ -1,4 +1,5 @@
 #include "sd.h"
+#include "debug.h"                                     /* DBG_INFO / DBG_WARN */
 
 /* SD 卡 SPI 引脚定义（ESP32-S3 普中板） */
 #define SD_SPI_CLK     GPIO_NUM_39
@@ -25,6 +26,7 @@ esp_err_t sd_spi_init(void)
     };
     ret = spi_bus_initialize(SPI2_HOST, &bus_cfg, SPI_DMA_CH_AUTO);
     if (ret != ESP_OK) {
+        DBG_WARN("SD 卡 SPI 总线初始化失败: %s\n", esp_err_to_name(ret));
         return ret;
     }
 
@@ -45,6 +47,14 @@ esp_err_t sd_spi_init(void)
     slot_cfg.host_id   = host.slot;
 
     ret = esp_vfs_fat_sdspi_mount(SD_MOUNT_POINT, &host, &slot_cfg, &mount_cfg, &s_card);
+    if (ret == ESP_OK) {
+        size_t total = 0, free = 0;
+        sd_get_fatfs_usage(&total, &free);
+        DBG_INFO("SD 卡挂载成功: %s, 总 %d MB, 可用 %d MB\n",
+                 SD_MOUNT_POINT, (int)(total / (1024*1024)), (int)(free / (1024*1024)));
+    } else {
+        DBG_WARN("SD 卡挂载失败: %s（无卡不影响运行）\n", esp_err_to_name(ret));
+    }
     return ret;
 }
 

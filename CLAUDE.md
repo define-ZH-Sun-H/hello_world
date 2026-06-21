@@ -2,7 +2,7 @@
 
 
 全程用中文思维，所有思考、输出均为中文。
-
+不准私自进行涉及 git 操作
 ---
 
 # Andrej Karpathy 的行为指南
@@ -78,3 +78,4 @@
 **查源码路径：** `codegraph_context` → `codegraph_explore` → `Read`（最后手段）
 
 不要 `codegraph_context` 后挨个 `Read` 文件 —— `codegraph_explore` 一次调用就能返回多个文件的源码，内容和 Read 逐字节相同。Read + grep 只在索引覆盖不到时用（字符串字面量、配置文件等）。
+
