@@ -1,0 +1,23 @@
+// components/ota/ota_gitee.h
+#ifndef OTA_GITEE_H
+#define OTA_GITEE_H
+
+#include <stdbool.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/**
+ * 查询 Gitee Releases 最新版本
+ * @param[out] tag_name  传出最新版本 tag（调用者无需释放，指向内部 static 字符串）
+ * @param[out] dl_url    传出固件下载 URL（调用者无需释放，指向内部 static 字符串）
+ * @return true=查询成功，false=查询失败
+ */
+bool ota_gitee_check(const char **tag_name, const char **dl_url);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* OTA_GITEE_H */

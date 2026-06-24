@@ -7,6 +7,8 @@
 #include <stdio.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "esp_log.h"
+#include "esp_ota_ops.h"
 
 #include "bsp.h"
 #include "system.h"
@@ -16,7 +18,22 @@
 
 void app_main(void)
 {
-    printf("[MAIN] 普中 ESP32-S3 + ST7789 + LVGL 启动\n");
+    printf("[MAIN] 普中 ESP32-S3 + ST7789 + LVGL 启动 [版本: %s]\n", FIRMWARE_VERSION);
+
+#if defined(CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE)
+    /* 确认当前固件有效，防止 bootloader 在 PENDING_VERIFY 状态触发回滚 */
+    const esp_partition_t *running = esp_ota_get_running_partition();
+    esp_ota_img_states_t ota_state;
+    if (running && esp_ota_get_state_partition(running, &ota_state) == ESP_OK) {
+        if (ota_state == ESP_OTA_IMG_PENDING_VERIFY) {
+            if (esp_ota_mark_app_valid_cancel_rollback() == ESP_OK) {
+                ESP_LOGI("ota", "固件已验证，取消回滚");
+            } else {
+                ESP_LOGE("ota", "取消回滚失败");
+            }
+        }
+    }
+#endif
 
     /* ================================================================
      * Phase 1 — 板级硬件初始化（含触控彩屏）

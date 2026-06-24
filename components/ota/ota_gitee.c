@@ -1,4 +1,4 @@
-// components/ota/ota_github.c
+// components/ota/ota_gitee.c
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -6,12 +6,14 @@
 #include "esp_http_client.h"
 #include "esp_crt_bundle.h"
 #include "cJSON.h"
-#include "ota_github.h"
+#include "ota_gitee.h"
 
-static const char *TAG = "ota_github";
+static const char *TAG = "ota_gitee";
 
-/* GitHub API 配置 */
-#define GITHUB_API_URL   "https://api.github.com/repos/define-ZH-Sun-H/hello_world/releases/latest"
+/* Gitee API 配置 */
+#define GITEE_OWNER      "define-ZH-Sun-H"
+#define GITEE_REPO       "hello_world"
+#define GITEE_API_URL    "https://api.gitee.com/repos/" GITEE_OWNER "/" GITEE_REPO "/releases/latest"
 #define EXPECTED_ASSET   "hello_world.bin"
 
 /* 内部缓存，避免重复 malloc */
@@ -50,12 +52,12 @@ static esp_err_t _http_evt_handler(esp_http_client_event_t *evt)
     return ESP_OK;
 }
 
-bool ota_github_check(const char **tag_name, const char **dl_url)
+bool ota_gitee_check(const char **tag_name, const char **dl_url)
 {
     resp_buf_t buf = {0};
 
     esp_http_client_config_t cfg = {
-        .url = GITHUB_API_URL,
+        .url = GITEE_API_URL,
         .method = HTTP_METHOD_GET,
         .timeout_ms = 10000,
         .user_agent = "ESP32S3-OTA/1.0",
@@ -70,12 +72,6 @@ bool ota_github_check(const char **tag_name, const char **dl_url)
         return false;
     }
 
-    /* 设置请求头 */
-    esp_err_t hdr_err = esp_http_client_set_header(client, "Accept", "application/vnd.github+json");
-    if (hdr_err != ESP_OK) {
-        ESP_LOGW(TAG, "设置 Accept 头失败: %s", esp_err_to_name(hdr_err));
-    }
-
     esp_err_t err = esp_http_client_perform(client);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "HTTP 请求失败: %s", esp_err_to_name(err));
@@ -84,7 +80,7 @@ bool ota_github_check(const char **tag_name, const char **dl_url)
 
     int status = esp_http_client_get_status_code(client);
     if (status != 200) {
-        ESP_LOGE(TAG, "GitHub API 返回 %d", status);
+        ESP_LOGE(TAG, "Gitee API 返回 %d", status);
         goto fail;
     }
 

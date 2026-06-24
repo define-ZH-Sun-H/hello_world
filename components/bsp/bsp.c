@@ -7,6 +7,8 @@
  */
 
 #include "bsp.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "iic.h"
 #include "rgb.h"
 #include "audio.h"
@@ -39,13 +41,13 @@ static void wdt_initial(void)
 
 void bsp_init(void)
 {
-    led_init();                                 /* LED GPIO */
+    wdt_initial();                              /* TWDT 15s（先配，防后续 init 阻塞无保护） */
     key_init();                                 /* 按键 GPIO + ISR */
-    /* OLED 已替换为 TFT LCD，I2C 总线无需在此初始化 */
-    sensor_init();                              /* DS18B20 + DHT11 */
-    rgb_init();                                 /* WS2812 RMT */
+    // led_init();                                 /* LED GPIO */
+    // sensor_init();                              /* DS18B20 + DHT11 */
+    // rgb_init();                                 /* WS2812 RMT */
     audio_init();                               /* LMD2718 + NS4168 (I2S) */
+    vTaskDelay(pdMS_TO_TICKS(50));              /* 稳定电源，防止 brownout（I2S+RGB+SD 连续大电流） */
     sd_spi_init();                              /* SD 卡（SPI 模式，无卡不阻塞） */
     touch_lcd_init();                           /* 触控彩屏：引脚 + SPI 总线初始化（面板初始化在 lvgl_app_start） */
-    wdt_initial();                              /* TWDT 15s */
 }
