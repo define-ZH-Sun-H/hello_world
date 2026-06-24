@@ -52,7 +52,7 @@ typedef struct {
     int                   timeout_ms;        /**< HTTP 超时 ms，默认 60000 */
     int                   max_retries;       /**< 最大重试次数，默认 3 */
     int                   retry_interval_ms; /**< 重试间隔 ms，默认 5000 */
-    bool                  crt_bundle_attach; /**< 加载 CA 证书包，默认 true */
+    bool                  crt_bundle_attach; /**< 加载 CA 证书包，需显式设为 true */
     int                   buffer_size;       /**< 接收缓冲区大小，默认 16384 */
     int                   max_redirect;      /**< 最大重定向次数，默认 5 */
     const char           *user_agent;        /**< User-Agent 字符串 */

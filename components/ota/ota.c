@@ -217,7 +217,6 @@ esp_err_t ota_start(void)
     esp_wifi_set_ps(WIFI_PS_NONE);
 
     esp_err_t ret = ESP_FAIL;
-    esp_err_t err;
     const esp_partition_t *update_partition = NULL;
     esp_ota_handle_t update_handle = 0;
 
@@ -274,6 +273,7 @@ esp_err_t ota_start(void)
         .timeout_ms        = 60000,
         .max_retries       = 3,
         .retry_interval_ms = 5000,
+        .crt_bundle_attach = true,
         .on_data           = _on_data_cb,
         .user_ctx          = &ota_ctx,
     };
@@ -292,13 +292,17 @@ esp_err_t ota_start(void)
         goto cleanup;
     }
 
+    if (!ota_ctx.ota_begun) {
+        ESP_LOGE(TAG, "固件头不完整，下载数据异常");
+        goto cleanup;
+    }
     update_handle = ota_ctx.handle;
     report_progress(95, "校验中...");
 
     /* ------------------------------------------------------------
      * 第 4 步：结束 OTA 并设置启动分区
      * ------------------------------------------------------------ */
-    err = esp_ota_end(update_handle);
+    esp_err_t err = esp_ota_end(update_handle);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "esp_ota_end 失败: %s", esp_err_to_name(err));
         if (err == ESP_ERR_OTA_VALIDATE_FAILED) {
