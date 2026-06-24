@@ -93,6 +93,12 @@ static esp_err_t ota_dl_event_handler(esp_http_client_event_t *evt)
     if (evt->event_id != HTTP_EVENT_ON_DATA || evt->data_len <= 0)
         return ESP_OK;
 
+    /* 跳过跳转响应（3xx）的 body，只处理最终 200 的数据 */
+    int http_status = esp_http_client_get_status_code(evt->client);
+    if (http_status >= 300) {
+        return ESP_OK;
+    }
+
     const uint8_t *data = (const uint8_t *)evt->data;
     size_t len = evt->data_len;
 
@@ -154,8 +160,9 @@ static esp_err_t ota_dl_event_handler(esp_http_client_event_t *evt)
             ctx->total_read = ctx->header_bytes;
         }
 
-        /* 如果还有剩余数据未处理，继续往下走写入 */
-        size_t consumed = (ctx->header_bytes < HEADER_SIZE) ? copy : len;
+        /* 无论 header 是否刚填满，都只消耗 copy 字节；
+         * 剩余的 (len - copy) 字节进入 Phase 2 写入 */
+        size_t consumed = copy;
         data += consumed;
         len   -= consumed;
     }
@@ -317,6 +324,7 @@ esp_err_t ota_start(void)
             .crt_bundle_attach = esp_crt_bundle_attach,
             .event_handler = ota_dl_event_handler,
             .user_data = &dl_ctx,
+            .max_redirection_count = 5,
         };
 
         esp_http_client_handle_t http = esp_http_client_init(&cfg);
