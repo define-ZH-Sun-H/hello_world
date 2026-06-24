@@ -80,13 +80,13 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
         break;
 
     case MQTT_EVENT_DATA:
-        ESP_LOGI(TAG, "收到: %.*s = %.*s",
-                 event->topic_len, event->topic,
-                 event->data_len, event->data);
+        printf("[MQTT] 收到消息: %.*s = %.*s\n",
+               event->topic_len, event->topic,
+               event->data_len, event->data);
 
         /* OTA 升级触发 */
-        if (event->topic_len == 16
-            && memcmp(event->topic, "cmd/esp32s3/ota", 16) == 0) {
+        if (event->topic_len == sizeof("cmd/esp32s3/ota") - 1
+            && memcmp(event->topic, "cmd/esp32s3/ota", sizeof("cmd/esp32s3/ota") - 1) == 0) {
             ESP_LOGI(TAG, "收到 OTA 指令，开始升级");
             ota_start();
         }
@@ -210,10 +210,10 @@ static void mqtt_time_task(void *pv)
                 // oled_display_set_time(time_str);  /* TODO: 新 LVGL 显示系统接入后恢复 */
             }
 
-            /* 每 10s 发布一次传感器数据 */
+            /* 每 10s 发布一次传感器数据（当前已暂停） */
             if (++pub_counter >= 10 && s_client) {
                 pub_counter = 0;
-                publish_sensor_data();
+                // publish_sensor_data();
             }
 
             vTaskDelay(pdMS_TO_TICKS(1000));

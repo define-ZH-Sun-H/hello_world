@@ -69,5 +69,5 @@ void app_start_tasks(void)
     // oled_display_start();               /* OLED 已替换为 TFT LCD */
     // rgb_start_rainbow();                /* RGB 彩虹循环（core 1, pri 3） */
     lvgl_app_start();                   /* 触控彩屏完整初始化 → 创建 LVGL 任务 */
-    mqtt_audio_test_start();            /* 音频采集 → MQTT 发布（等 MQTT 就绪后自动启动） */
+    // mqtt_audio_test_start();            /* 音频采集 → MQTT 发布（当前已暂停） */
 }

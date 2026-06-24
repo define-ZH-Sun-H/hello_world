@@ -71,11 +71,19 @@
 
 **这些指南生效的标志是：** diff 中不必要的修改变少，因过度复杂导致的重写变少，澄清性问题出现在实现之前而非犯错之后。
 
----
+## 5. Codegraph 优先
 
-# Codegraph 使用指南
+**涉及代码分析必须先调 `codegraph_context`。**
 
-**查源码路径：** `codegraph_context` → `codegraph_explore` → `Read`（最后手段）
+选择框架：
+| 场景 | 做法 |
+|------|------|
+| 探索陌生模块 | `codegraph_context` 优先，看骨架再决定深入哪 |
+| 已知要读 ≥3 个源码文件 | `codegraph_explore` 一次批量取 |
+| 读文档/markdown/配置文件 | `Read` 直接 |
+| 读单个小源码文件（<50行） | `Read` 或 `codegraph_node` |
+| 不确定代码在哪 | `codegraph_context` 先定位 |
+| 只确认一个符号定义 | `codegraph_node includeCode` |
 
-不要 `codegraph_context` 后挨个 `Read` 文件 —— `codegraph_explore` 一次调用就能返回多个文件的源码，内容和 Read 逐字节相同。Read + grep 只在索引覆盖不到时用（字符串字面量、配置文件等）。
+> **红旗：** 准备 Read 一个 `.c/.h/.cpp` 文件时，先停住问 "我用 codegraph 了吗？"
 

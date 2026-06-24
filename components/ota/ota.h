@@ -20,7 +20,7 @@ extern "C" {
 typedef void (*ota_progress_cb_t)(int percent, const char *status);
 
 /**
- * 检查 GitHub 最新 Release，比对版本号
+ * 检查 Gitee 最新 Release，比对版本号
  * @return true=有新版本，false=已是最新或检查失败
  */
 bool ota_check_new_version(void);

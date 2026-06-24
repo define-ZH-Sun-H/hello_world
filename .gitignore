@@ -1,15 +1,17 @@
 # ========== 项目里存在的目录 ==========
 .claude/
 .codegraph/
+.superpowers/
 .emv2/
+.ux/
 .reasonix/
 .vscode/
 .devcontainer/
 docs/
 build/
+teaching/
 
 # ========== 项目里存在的文件 ==========
-sdkconfig
 sdkconfig.old
 dependencies.lock
 .mcp.json
