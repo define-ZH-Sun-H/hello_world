@@ -71,7 +71,6 @@ typedef struct {
     bool                   header_checked;
     uint8_t                header_buf[HEADER_SIZE];
     size_t                 header_bytes;
-    const char            *version;
 } ota_dl_ctx_t;
 
 /**
@@ -268,7 +267,6 @@ esp_err_t ota_start(void)
      * ------------------------------------------------------------ */
     ota_dl_ctx_t ota_ctx = {
         .update_partition = update_partition,
-        .version          = latest_tag,
     };
 
     http_dl_config_t dl_cfg = {
