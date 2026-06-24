@@ -11,9 +11,9 @@
 static const char *TAG = "ota_gitee";
 
 /* Gitee API 配置 */
-#define GITEE_OWNER      "define-ZH-Sun-H"
+#define GITEE_OWNER      "Define_ZH_S"
 #define GITEE_REPO       "hello_world"
-#define GITEE_API_URL    "https://api.gitee.com/repos/" GITEE_OWNER "/" GITEE_REPO "/releases/latest"
+#define GITEE_API_URL    "https://gitee.com/api/v5/repos/" GITEE_OWNER "/" GITEE_REPO "/releases/latest"
 #define EXPECTED_ASSET   "hello_world.bin"
 
 /* 内部缓存，避免重复 malloc */
